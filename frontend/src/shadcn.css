@@ -1,0 +1,74 @@
+/* Tailwind v4 + shadcn/ui tokens for the vendored components in
+   src/components/ui/. Deliberately imports only the theme + utilities layers -
+   NO preflight - so the app's hand-rolled styles.css is left untouched; the
+   utilities live in a cascade layer and lose to any un-layered app rule. */
+
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* shadcn semantic tokens, mapped onto the app palette (styles.css :root).
+   Dark mode needs no extra block: the underlying app variables already flip
+   via prefers-color-scheme. */
+:root {
+  --radius: 0.5rem;
+  --background: var(--surface-1);
+  --foreground: var(--text-primary);
+  --card: var(--surface-1);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--series-1);
+  --primary-foreground: #ffffff;
+  --secondary: var(--page-plane);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--page-plane);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--page-plane);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--danger);
+  --input: var(--border);
+  --ring: var(--series-1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Preflight normally defaults every element's border-color to the border
+   token; without it, borders from width-only utilities (border-b on table
+   rows) would fall back to currentColor. Scope that default to the shadcn
+   component subtrees only. */
+@layer base {
+  [data-slot='table'] *,
+  [data-slot='table-container'] *,
+  [data-slot='button'],
+  [data-slot='input'],
+  [data-slot='dropdown-menu-content'] {
+    /* var(--border), not var(--color-border): with `@theme inline` Tailwind
+       inlines the source vars into utilities and emits no --color-* custom
+       properties at runtime. */
+    border-color: var(--border);
+  }
+}

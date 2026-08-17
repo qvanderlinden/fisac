@@ -1,0 +1,1790 @@
+:root {
+  --surface-1: #fcfcfb;
+  --page-plane: #f7f7f5;
+  --sidebar-bg: #f1f0eb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --series-1: #2a78d6;
+  --danger: #d03b3b;
+  --border: rgba(11, 11, 11, 0.1);
+  --shadow: 0 20px 50px rgba(11, 11, 11, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1a1a19;
+    --page-plane: #121211;
+    --sidebar-bg: #17110d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --series-1: #3987e5;
+    --danger: #e66767;
+    --border: rgba(255, 255, 255, 0.1);
+    --shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: inherit;
+}
+
+/* App shell: fixed sidebar + scrollable main content, desktop-first */
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 272px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 20px 16px;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding: 0 8px;
+  margin-bottom: 24px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 24px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--border);
+}
+
+.sidebar-nav-item.active {
+  background: var(--surface-1);
+  color: var(--series-1);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+}
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 40px 48px 64px;
+}
+
+/* Wide variant for the many-column flows tables. Fills the viewport height so
+   the grid inside can scroll internally (keeping header + New entry visible). */
+.page-wide {
+  max-width: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Like .page-wide (fills the viewport height so a child region can scroll
+   internally) but keeps .page's centered reading width. Used by the VAT tab
+   to pin its header + summary tiles while only the flows table scrolls. */
+.page-fill {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.page-header h1 {
+  font-size: 1.5rem;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 48px 0;
+}
+
+/* Account dropdown (sidebar) */
+
+.account-dropdown-wrap {
+  position: relative;
+  margin-bottom: 24px;
+}
+
+.account-trigger-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: inherit;
+  text-align: left;
+}
+
+.account-trigger:hover {
+  border-color: var(--text-secondary);
+}
+
+.account-settings-button {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.account-settings-button:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.account-trigger-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.account-trigger-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.account-dropdown-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 11;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* Sidebar account list (rendered inside the dropdown above) */
+
+.sidebar-empty-state {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 0 8px;
+  margin: 0 0 8px;
+}
+
+.sidebar-account-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-account-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.sidebar-account-row:hover {
+  background: var(--border);
+}
+
+.sidebar-account-row.selected {
+  background: var(--surface-1);
+  box-shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+}
+
+.sidebar-account-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.sidebar-account-balance {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-add-account {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.sidebar-add-account:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+/* Data tables */
+
+.table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+
+.table-wrap h2 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 9px 16px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table th.amount-col,
+.data-table td.amount-cell {
+  text-align: right;
+}
+
+.data-table tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.data-table tbody tr.clickable:hover {
+  background: var(--page-plane);
+  cursor: pointer;
+}
+
+.data-table td {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  vertical-align: middle;
+}
+
+.data-table .cell-title {
+  font-weight: 600;
+}
+
+.data-table .cell-subtitle {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 400;
+  margin-top: 1px;
+}
+
+.amount-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.amount-positive {
+  color: var(--series-1);
+}
+
+.amount-negative {
+  color: var(--danger);
+}
+
+.table-wrap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-wrap-header h2 {
+  margin: 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.table-search {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  min-width: 200px;
+}
+
+.table-search:focus {
+  outline: none;
+  border-color: var(--series-1);
+}
+
+/* Hovered-day flow list, shown directly under the balance chart */
+
+.hover-flows {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  padding: 14px 16px;
+}
+
+.hover-flows h3 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.hover-flows-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hover-flows-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+/* Modal (centered dialog, not a mobile bottom sheet) */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 11, 11, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--surface-1);
+  width: 100%;
+  max-width: 520px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 28px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+
+/* Forms */
+
+.flow-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.flow-form h2 {
+  margin: 0 0 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.field input[type='number'],
+.field input[type='text'],
+.field input[type='date'] {
+  font-size: 0.95rem;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.field input:focus {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+.field-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.field-row input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+}
+
+.segmented button {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-secondary);
+  text-transform: capitalize;
+  font-size: 0.88rem;
+}
+
+.segmented button:hover {
+  border-color: var(--series-1);
+}
+
+.segmented button.selected {
+  background: var(--series-1);
+  border-color: var(--series-1);
+  color: white;
+  font-weight: 600;
+}
+
+.form-error {
+  color: var(--danger);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  justify-content: flex-end;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.btn-danger {
+  margin-right: auto;
+}
+
+.btn-primary {
+  background: var(--series-1);
+  border-color: var(--series-1);
+  color: white;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  filter: brightness(0.93);
+}
+
+.btn-secondary {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--page-plane);
+}
+
+.btn-danger {
+  background: var(--surface-1);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  filter: brightness(0.95);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--series-1);
+  font-size: 0.85rem;
+  padding: 4px 0;
+  align-self: flex-start;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* Paid status - an interactive toggle button on each flow row (flow list and
+   projection table) that marks the flow paid/unpaid. */
+
+.paid-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  color: var(--surface-1);
+  font-size: 0.68rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.paid-toggle {
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.paid-toggle:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.paid-toggle.paid {
+  background: var(--text-muted);
+  border-color: var(--text-muted);
+  color: var(--surface-1);
+  font-weight: 600;
+}
+
+.paid-toggle.paid:hover {
+  filter: brightness(0.9);
+}
+
+.table-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.edit-flow-button {
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.edit-flow-button:hover {
+  border-color: var(--series-1);
+  color: var(--series-1);
+}
+
+/* Stats / projection */
+
+.projection {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stat-row {
+  display: flex;
+  gap: 16px;
+}
+
+.stat-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.stat-value {
+  font-size: 1.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Click-to-edit variant of a stat value (current balance on the projection). */
+.stat-value-editable {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.stat-edit-hint {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.stat-value-editable:hover .stat-edit-hint {
+  opacity: 1;
+}
+
+.stat-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-edit-form input {
+  width: 140px;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.stat-edit-form input:focus {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+/* VAT tab */
+
+.vat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* Pin the header + summary tiles; only the flows table scrolls. The view fills
+   its (height-filling) .page-fill wrapper, then hands the leftover space to the
+   table box, which bounds an internal scroll region under a sticky header. */
+.vat-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vat-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.vat-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.vat-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Column headers stay put while the rows scroll beneath them. Opaque
+   background so scrolled rows don't bleed through. */
+.vat-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-1);
+}
+
+/* Segmented button group (quarter selector): shadcn Buttons joined into one
+   control with shared borders. */
+.button-group {
+  display: inline-flex;
+}
+
+.button-group > * {
+  border-radius: 0;
+}
+
+.button-group > *:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.button-group > *:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.button-group > * + * {
+  margin-left: -1px;
+}
+
+.vat-notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* VAT amount + rate context under a flow's gross VAT (secondary line). */
+.vat-drill-meta {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.data-table tfoot td {
+  border-top: 2px solid var(--border);
+  font-weight: 600;
+}
+
+/* Balance chart */
+
+.balance-chart {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.chart-readout {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.chart-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.window-selector {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--surface-1);
+}
+
+.window-selector button {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.window-selector button:hover {
+  color: var(--text-primary);
+}
+
+.window-selector button.selected {
+  background: var(--series-1);
+  color: white;
+  font-weight: 600;
+}
+
+.balance-chart svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.balance-line {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.balance-area-positive {
+  fill: var(--series-1);
+  opacity: 0.1;
+}
+
+.balance-area-negative {
+  fill: var(--danger);
+  opacity: 0.1;
+}
+
+.crosshair {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.gridline {
+  stroke: var(--gridline);
+  stroke-width: 1;
+}
+
+.baseline {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+
+.axis-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+
+.chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 0.85rem;
+}
+
+.chart-table th,
+.chart-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+/* Below this width the sidebar stops being the primary design target -
+   collapse it into a top bar so the app is still usable, but this is a
+   fallback, not the focus (see CLAUDE.md/plan: desktop-first by request). */
+@media (max-width: 760px) {
+  .app-shell {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+  }
+
+  .sidebar-brand {
+    margin-bottom: 0;
+    margin-right: auto;
+  }
+
+  .account-dropdown-wrap {
+    flex: 1 1 220px;
+    margin-bottom: 0;
+    order: 1;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    margin-top: 0;
+    order: 2;
+    width: 100%;
+  }
+
+  .sidebar-nav-item {
+    width: auto;
+  }
+
+  .page {
+    padding: 24px 20px 48px;
+  }
+}
+
+/* --- Flow form: category/method selects, payment-date auto-fill --- */
+.field select {
+  font-size: 0.95rem;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.field select:focus {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+.autofill-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.offset-fill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.offset-fill input[type='number'] {
+  width: 56px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+/* --- Line-item editor --- */
+.lines-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--page-plane);
+}
+
+.lines-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.line-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Three amount-ish inputs per line now - let them wrap on narrow screens. */
+  flex-wrap: wrap;
+}
+
+.line-row input {
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.line-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.line-amount {
+  width: 100px;
+}
+
+.line-vat,
+.line-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.line-vat input {
+  width: 64px;
+}
+
+.line-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.line-remove:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.line-remove:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.lines-totals {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.lines-total-gross {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* --- Flow list payment cell --- */
+.payment-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.payment-cell .text-secondary {
+  font-size: 0.8rem;
+}
+
+/* --- LLM flow generator --- */
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-wide {
+  max-width: 720px;
+}
+
+.field textarea {
+  font-size: 0.95rem;
+  font-family: inherit;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.field textarea:focus {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+.generator-hint {
+  margin: 0;
+  font-size: 0.83rem;
+}
+
+/* Full-width search above the flows bulk toolbar. */
+.flow-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 12px;
+}
+
+/* Bulk-select toolbar above the flows data table. */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.bulk-bar-count {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+/* No selection: the bar stays put but reads as inactive. */
+.bulk-bar-count.is-empty {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.bulk-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Rows in the bulk-edit dialog: an "apply this field" toggle + its control. */
+.bulk-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bulk-field-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 140px;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.bulk-field select,
+.bulk-field input[type='number'] {
+  font-size: 0.95rem;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.bulk-field select {
+  flex: 1;
+}
+
+.bulk-field select:disabled,
+.bulk-field input:disabled {
+  opacity: 0.5;
+}
+
+.bulk-amount-inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bulk-amount-inputs > input {
+  width: 120px;
+}
+
+.bulk-amount-vat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bulk-amount-vat input {
+  width: 64px;
+}
+
+.form-hint {
+  margin: -4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Inline-editable cells in the flows table. Borderless until hovered/focused
+   so the table stays clean but every field reads as editable. */
+.cell-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+.cell-input:hover:not(:disabled) {
+  border-color: var(--border);
+}
+
+.cell-input:focus {
+  outline: none;
+  border-color: var(--series-1);
+  background: var(--page-plane);
+}
+
+.cell-input:disabled {
+  opacity: 0.45;
+}
+
+.cell-input-name {
+  font-weight: 600;
+  min-width: 140px;
+}
+
+/* Drag-to-reorder handle column. */
+.drag-handle-cell {
+  width: 32px;
+}
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Row being dragged, and the drop-insertion indicator. The separate border
+   model ignores tr borders, so the line goes on the cells via inset shadow. */
+.is-dragging {
+  opacity: 0.4;
+}
+
+.drop-above td {
+  box-shadow: inset 0 2px 0 var(--series-1);
+}
+
+.drop-below td {
+  box-shadow: inset 0 -2px 0 var(--series-1);
+}
+
+/* Percentage cell: a narrow number input followed by a "%". */
+.cell-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.cell-input-rate {
+  width: 88px;
+}
+
+/* Row expand/collapse chevron column. */
+.flow-expand-cell {
+  width: 34px;
+}
+
+.flow-expand-btn {
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.flow-expand-btn:hover {
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+/* Expanded panel holding a flow's line editor. */
+.flow-expanded-cell {
+  background: var(--page-plane);
+  padding: 14px 16px;
+}
+
+.flow-expanded-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+/* Clickable sortable column headers. */
+.sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.sort-header:hover {
+  color: var(--text-primary);
+}
+
+.sort-header-right {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.sort-indicator {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.sort-header:hover .sort-indicator {
+  color: var(--text-secondary);
+}
+
+/* The flows view fills the main-content height: a fixed toolbar on top, then a
+   bordered grid box that scrolls internally so the "New entry" row stays
+   visible at its bottom without floating. */
+.flows-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.flows-toolbar {
+  flex: 0 0 auto;
+}
+
+.flows-toolbar .page-header {
+  margin-bottom: 16px;
+}
+
+.flows-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Search input with a leading magnifier icon. */
+.flow-search-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.flow-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.flow-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px 8px 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.flow-search-input:focus {
+  outline: none;
+  border-color: var(--series-1);
+}
+
+.flows-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Toolbar buttons (Filter, bulk menu) - subtle bordered pills. */
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.toolbar-btn:hover {
+  background: var(--page-plane);
+}
+
+.toolbar-btn.is-active {
+  border-color: var(--series-1);
+  color: var(--series-1);
+}
+
+.toolbar-btn-square {
+  padding: 7px 9px;
+}
+
+.toolbar-btn-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.toolbar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--series-1);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Popover (Filter panel, bulk menu). */
+.popover {
+  position: relative;
+  display: inline-flex;
+}
+
+.popover-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 220px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.popover-panel-right {
+  right: 0;
+}
+
+.popover-panel-left {
+  left: 0;
+}
+
+.popover-title {
+  padding: 2px 4px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.popover-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* Filter panel fields. */
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.filter-field select {
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+/* Dropdown menu (bulk actions). */
+.menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.menu-item {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--page-plane);
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu-item-danger {
+  color: var(--danger);
+}
+
+/* Bordered grid box that fills remaining height. The body scrolls inside it so
+   the header stays at the top of the box and the "New entry" row stays at the
+   bottom, both always visible. */
+.flows-table-region {
+  /* grow: 0 so it sizes to its content (small when there are few/no rows);
+     shrink: 1 so when rows exceed the available height it caps there and the
+     body scrolls internally with the New entry row pinned at the bottom. */
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+/* The scrollable body area (overrides the shared boxed .table-wrap look). */
+.flows-table-region .table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Neutralize the shadcn Table's own overflow-x wrapper so .table-wrap is the
+   single scroll container - required for the sticky header below to anchor to
+   it (both axes now scroll on .table-wrap). */
+.flows-table-region [data-slot='table-container'] {
+  overflow: visible;
+}
+
+/* Sticky header row, with a divider underneath. The shadcn table uses the
+   separate border model (row borders are ignored), so the divider goes on the
+   header cells; --gridline is far more visible than --border. */
+.flows-table-region thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--gridline);
+}
+
+/* Always-visible "New entry" row at the bottom of the grid box. */
+.flow-newentry {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-top: 1px solid var(--gridline);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.flow-newentry:hover {
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.flow-newentry-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Unsaved draft row (from "New entry"). */
+.flow-draft-row {
+  background: var(--page-plane);
+}
+
+.flow-draft-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.flow-draft-error {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+  text-align: right;
+}
+
+.generator-table {
+  max-height: 45vh;
+  overflow-y: auto;
+}
