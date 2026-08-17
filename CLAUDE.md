@@ -75,13 +75,19 @@ Frontend build/typecheck: `cd frontend && npm run build` (`tsc -b && vite build`
 
 ## Database
 
-Database, role, and schema are all named `fisac`. Tables live in the `fisac`
-schema rather than `public` so the app's role owns exactly its own table
-namespace.
+Tables live in a dedicated `fisac` schema rather than `public`. Schema
+creation is automatic: `backend/migrations/env.py` runs `CREATE SCHEMA IF NOT
+EXISTS fisac` on the connection before Alembic does anything else — including
+before Alembic creates its own `alembic_version` bookkeeping table, which also
+lives in that schema, so the schema has to exist first. A fresh database
+needs no manual setup beyond `DATABASE_URL` pointing at it; the connecting
+role just needs `CREATE` privilege on the database (true by default for a
+database's own owner — e.g. a managed Postgres provider's auto-created user).
 
-- `scripts/init-postgres.sh` is the canonical role + schema bootstrap. It runs
-  automatically if dropped into `/docker-entrypoint-initdb.d` of the official
-  postgres image; otherwise run the SQL by hand once against a fresh database.
+- `scripts/init-postgres.sh` is optional. It creates a dedicated
+  least-privilege `fisac` role plus the schema, for setups where the app
+  should connect as a role narrower than the database's owner. It's not
+  required otherwise — the migration bootstraps the schema itself.
 - `backend/src/fisac/db.py` binds `MetaData(schema="fisac")` so tables are
   always schema-qualified regardless of the connection's `search_path`.
 - `backend/migrations/env.py` sets `version_table_schema="fisac"` plus an
@@ -89,8 +95,9 @@ namespace.
   --autogenerate` to this schema and excludes alembic's own `alembic_version`
   table from the diff; without it autogenerate reflects everything else visible
   in the database and can propose destructive changes. Note the subtlety it
-  encodes: `fisac` is the role's own default schema, which Alembic represents
-  internally as `None`, not by name — the filter must allow both.
+  encodes: `fisac` can be the connecting role's own default schema, which
+  Alembic represents internally as `None`, not by name — the filter must
+  allow both.
 - Migrations are **not** applied by `uvicorn --reload`; run `alembic upgrade
   head` yourself. The container image does run them on start.
 

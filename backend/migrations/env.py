@@ -2,6 +2,7 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from fisac.config import settings
@@ -20,11 +21,12 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Tables live in a dedicated schema rather than public
-# Scoping autogenerate to it keeps the diff from
-# picking up anything else in the database, and alembic's own bookkeeping
-# table is excluded explicitly.
-SCHEMA = "fisac"
+# Tables live in a dedicated schema rather than public - read off the
+# MetaData itself (db.py's single source of truth) rather than repeating the
+# literal here, so this can't drift out of sync with it. Scoping autogenerate
+# to it keeps the diff from picking up anything else in the database, and
+# alembic's own bookkeeping table is excluded explicitly.
+SCHEMA = target_metadata.schema
 
 
 def include_name(name, type_, parent_names):
@@ -52,6 +54,14 @@ def run_migrations_offline() -> None:
 
 
 def _do_run_migrations(connection) -> None:
+    # Alembic creates its own version-tracking table in this schema before
+    # running any migration's upgrade() - the schema has to exist before that
+    # happens, so a fresh database needs this ahead of context.configure().
+    # Committed on its own so it isn't left inside whatever transaction
+    # context.begin_transaction() opens next.
+    connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
+    connection.commit()
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,

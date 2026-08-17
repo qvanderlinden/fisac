@@ -65,13 +65,16 @@ Typecheck + build the frontend with `cd frontend && npm run build`
 
 ## Database
 
-Database, role, and schema are all named `fisac`. Tables live in the `fisac`
-schema rather than `public`, so the app's least-privilege role owns exactly its
-own table namespace.
+Tables live in a dedicated `fisac` schema rather than `public`. Schema
+creation is automatic — `backend/migrations/env.py` creates it on the
+connection before Alembic touches anything else, so a fresh database needs no
+manual setup beyond a `DATABASE_URL`. The connecting role just needs `CREATE`
+privilege on the database (true by default for a database's own owner).
 
-- `scripts/init-postgres.sh` is the canonical role + schema bootstrap. It runs
-  automatically if mounted into `/docker-entrypoint-initdb.d` of the official
-  postgres image; otherwise run the SQL by hand once against a fresh database.
+- `scripts/init-postgres.sh` is optional: it creates a dedicated
+  least-privilege `fisac` role plus schema, for setups where the app should
+  connect as a role narrower than the database's owner. Not required
+  otherwise — the migration bootstraps the schema itself.
 - `backend/src/fisac/db.py` binds `MetaData(schema="fisac")` so tables are
   always schema-qualified regardless of the connection's `search_path`.
 - `backend/migrations/env.py` sets `version_table_schema="fisac"` and an
