@@ -20,8 +20,8 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Tables live in a dedicated schema rather than public (see
-# scripts/init-postgres.sh). Scoping autogenerate to it keeps the diff from
+# Tables live in a dedicated schema rather than public
+# Scoping autogenerate to it keeps the diff from
 # picking up anything else in the database, and alembic's own bookkeeping
 # table is excluded explicitly.
 SCHEMA = "fisac"
