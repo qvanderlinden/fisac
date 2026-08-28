@@ -15,6 +15,9 @@ interface BalanceChartProps {
   asOf: string
   startingBalance: number
   points: BalancePoint[]
+  // Payment date of the account's next flow past `points`, if any - null
+  // means nothing is scheduled beyond the plotted window at all.
+  nextFlowDate: string | null
   windowOptions: WindowOption[]
   selectedWindowMonths: number
   onWindowChange: (months: number) => void
@@ -72,6 +75,7 @@ export function BalanceChart({
   asOf,
   startingBalance,
   points,
+  nextFlowDate,
   windowOptions,
   selectedWindowMonths,
   onWindowChange,
@@ -138,11 +142,11 @@ export function BalanceChart({
     return ticks
   }, [minTime, timeSpan])
 
-  // Gray only applies when the account has zero flows anywhere in the
-  // selected window - a real flow followed by a quiet stretch (e.g. last
-  // flow March 20, window ends March 31) is fully known out to the window
-  // edge, even though flows may continue beyond it, so it stays colored.
-  const hasForecastGap = points.length === 0 && maxTime > times[times.length - 1]
+  // Gray only applies when nothing is scheduled beyond the plotted window
+  // at all (nextFlowDate is null) - a quiet stretch at the end of the window
+  // followed by real flows just past it (nextFlowDate set) is not a gap in
+  // our knowledge, it's just outside the selected view, so it stays colored.
+  const hasForecastGap = nextFlowDate === null && maxTime > times[times.length - 1]
 
   const activeIndex = selected ?? allPoints.length - 1
   const active = allPoints[activeIndex]

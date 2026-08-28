@@ -243,6 +243,10 @@ class AccountProjection(BaseModel):
     as_of: date
     starting_balance: Decimal
     points: list[ProjectionPoint]
+    # Payment date of the account's next flow past `points`, if any - lets the
+    # frontend tell "nothing scheduled after the window" apart from "nothing
+    # scheduled in the rest of this window, but more exists beyond it".
+    next_flow_date: date | None = None
 
 
 # --- VAT estimation (per quarter) -------------------------------------------

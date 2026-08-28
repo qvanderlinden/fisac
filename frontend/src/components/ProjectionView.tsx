@@ -156,6 +156,7 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
             asOf={projection.as_of}
             startingBalance={Number(projection.starting_balance)}
             points={projection.points.map((p) => ({ date: p.date, balance: Number(p.balance) }))}
+            nextFlowDate={projection.next_flow_date}
             windowOptions={WINDOW_OPTIONS}
             selectedWindowMonths={windowMonths}
             onWindowChange={setWindowMonths}

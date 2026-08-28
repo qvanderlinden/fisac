@@ -5,7 +5,7 @@ from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fisac.db import get_session
@@ -105,4 +105,16 @@ async def get_projection(
         )
         points.append(ProjectionPoint(date=day, flows=day_flows, balance=running_balance))
 
-    return AccountProjection(as_of=as_of, starting_balance=account.current_balance, points=points)
+    next_flow_date = await session.scalar(
+        select(func.min(Flow.payment_date)).where(
+            Flow.account_id == account.id,
+            Flow.payment_date > range_end,
+        )
+    )
+
+    return AccountProjection(
+        as_of=as_of,
+        starting_balance=account.current_balance,
+        points=points,
+        next_flow_date=next_flow_date,
+    )

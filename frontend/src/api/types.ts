@@ -188,6 +188,9 @@ export interface AccountProjection {
   as_of: string
   starting_balance: string
   points: ProjectionPoint[]
+  // Payment date of the account's next flow past `points`, if any - null
+  // means nothing is scheduled beyond the projection window at all.
+  next_flow_date: string | null
 }
 
 // --- VAT estimation (per quarter) ---
