@@ -218,8 +218,8 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
                   <thead>
                     <tr>
                       <th>Payment date</th>
-                      <th className="payment-icon-col"></th>
                       <th>Name</th>
+                      <th className="payment-icon-col"></th>
                       <th className="amount-col">Amount</th>
                       <th></th>
                     </tr>
@@ -230,6 +230,7 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
                       return (
                       <tr key={key}>
                         <td>{formatDate(flow.payment_date)}</td>
+                        <td className="cell-title">{flow.name}</td>
                         <td className="payment-icon-col">
                           {MethodIcon && (
                             <span title={paymentMethodLabel(flow.payment_method)}>
@@ -237,7 +238,6 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
                             </span>
                           )}
                         </td>
-                        <td className="cell-title">{flow.name}</td>
                         <td className={`amount-cell ${amountClass(flow.kind)}`}>
                           {formatFlowAmount(flow.kind, flow.amount)}
                         </td>
