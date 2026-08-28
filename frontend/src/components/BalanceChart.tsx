@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { formatDate } from '../accountingDisplay'
+import { addMonthsFrom, formatDate } from '../accountingDisplay'
 
 export interface BalancePoint {
   date: string
@@ -35,7 +35,6 @@ const PAD_LEFT = 68
 const PAD_RIGHT = 16
 const PAD_TOP = 20
 const PAD_BOTTOM = 32
-const MIN_SPAN_MS = 90 * 24 * 60 * 60 * 1000 // 90 days, so a sparsely-populated account still draws a real chart
 const X_TICK_COUNT = 6
 
 function parseLocalDate(iso: string): number {
@@ -91,7 +90,14 @@ export function BalanceChart({
 
   const times = useMemo(() => allPoints.map((p) => parseLocalDate(p.date)), [allPoints])
   const minTime = times[0]
-  const maxTime = Math.max(times[times.length - 1], minTime + MIN_SPAN_MS)
+  // The chart always spans the full selected window, even when there are no
+  // flows to plot (e.g. a 1Y horizon with a sparsely-populated account) -
+  // otherwise it'd draw only as far out as the last known data point.
+  const horizonTime = useMemo(
+    () => parseLocalDate(addMonthsFrom(asOf, selectedWindowMonths)),
+    [asOf, selectedWindowMonths],
+  )
+  const maxTime = Math.max(times[times.length - 1], horizonTime)
   const timeSpan = maxTime - minTime || 1
 
   const { yMin, yMax, yStep } = useMemo(() => {
