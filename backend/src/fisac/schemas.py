@@ -19,8 +19,9 @@ class AccountCreate(BaseModel):
     # Only meaningful for companies - normalized to false otherwise so the
     # stored state can't disagree with is_company.
     vat_applicable: bool = False
-    # Day of the month (1-31) the account's Visa charges are paid; feeds the
-    # create-flow form's payment_date auto-fill.
+    # Day of the month (1-31) the account's Visa charges are paid. Required
+    # before a flow can use payment_method=visa; the projection uses it to
+    # compute each Visa flow's effective payment date.
     visa_payment_day: int | None = Field(default=None, ge=1, le=31)
 
     @model_validator(mode="after")
@@ -107,7 +108,9 @@ class FlowCreate(BaseModel):
     category_id: int | None = None
     invoice_date: date
     # A flow with no payment method makes no payment, so it must carry no
-    # payment_date (mirrors the DB CheckConstraint).
+    # payment_date; a Visa flow's payment_date is likewise always null - its
+    # effective date is computed by the projection instead (mirrors the DB
+    # CheckConstraints).
     payment_date: date | None = None
     payment_method: PaymentMethod | None = None
     paid: bool = False
@@ -121,6 +124,8 @@ class FlowCreate(BaseModel):
     def _no_method_no_payment_date(self) -> "FlowCreate":
         if self.payment_method is None and self.payment_date is not None:
             raise ValueError("payment_date requires a payment_method")
+        if self.payment_method == PaymentMethod.VISA and self.payment_date is not None:
+            raise ValueError("Visa flows must not have a payment_date")
         return self
 
 

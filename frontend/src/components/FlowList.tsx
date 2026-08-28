@@ -529,6 +529,7 @@ export function FlowList({ account, kind }: FlowListProps) {
                     key={flow.id}
                     flow={flow}
                     kind={kind}
+                    account={account}
                     categories={categories}
                     colSpan={columnCount}
                     showReverseCharge={showReverseCharge}
@@ -546,6 +547,7 @@ export function FlowList({ account, kind }: FlowListProps) {
                 {adding && (
                   <NewFlowRow
                     kind={kind}
+                    account={account}
                     categories={categories}
                     showReverseCharge={showReverseCharge}
                     onCancel={() => setAdding(false)}
@@ -590,6 +592,7 @@ export function FlowList({ account, kind }: FlowListProps) {
       {bulkOpen && (
         <FlowBulkEditDialog
           count={visibleSelectedIds.length}
+          account={account}
           categories={categories}
           showReverseCharge={showReverseCharge}
           onCancel={() => setBulkOpen(false)}

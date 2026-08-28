@@ -55,9 +55,11 @@ class Account(Base):
     # Only meaningful when is_company is true; normalized to false otherwise
     # (see schemas.AccountCreate/routers.accounts.update_account).
     vat_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    # Day of the month the account's Visa charges are paid (1-31). Used only to
-    # auto-fill a Visa flow's payment_date in the create form - not otherwise
-    # load-bearing.
+    # Day of the month the account's Visa charges are paid (1-31). A Visa flow
+    # never stores its own payment_date (see ck_flows_no_visa_payment_date) -
+    # this is what the projection uses instead to compute the flow's effective
+    # payment date (next occurrence of this day on/after the flow's
+    # invoice_date).
     visa_payment_day: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
 
@@ -112,6 +114,13 @@ class Flow(Base):
             "payment_method IS NOT NULL OR payment_date IS NULL",
             name="ck_flows_no_method_no_payment_date",
         ),
+        # A Visa flow's actual payment date is the account's next
+        # visa_payment_day on/after invoice_date, computed by the projection -
+        # never stored on the flow itself.
+        CheckConstraint(
+            "payment_method != 'visa' OR payment_date IS NULL",
+            name="ck_flows_no_visa_payment_date",
+        ),
         Index("ix_flows_account_payment_date", "account_id", "payment_date"),
         Index("ix_flows_account_sort_key", "account_id", "sort_key"),
     )
@@ -130,7 +139,10 @@ class Flow(Base):
         ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # invoice_date drives fiscal reporting; payment_date drives cashflow. A NULL
-    # payment_date means no dated payment -> excluded from the projection.
+    # payment_date means no dated payment -> excluded from the projection,
+    # except for a Visa flow (see ck_flows_no_visa_payment_date), whose
+    # effective payment date the projection derives from invoice_date +
+    # Account.visa_payment_day instead.
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     payment_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     payment_method: Mapped[PaymentMethod | None] = mapped_column(

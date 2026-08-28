@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import type { CategoryRead, FlowBulkUpdate, PaymentMethod } from '../api/types'
+import type { AccountRead, CategoryRead, FlowBulkUpdate, PaymentMethod } from '../api/types'
 import { PAYMENT_METHOD_LABELS } from '../accountingDisplay'
 import { PAYMENT_METHODS } from './FlowForm'
 import { Checkbox } from '@/components/ui/checkbox'
 
 interface FlowBulkEditDialogProps {
   count: number
+  account: AccountRead
   categories: CategoryRead[]
   // Whether the reverse-charge (autoliquidation) toggle is offered.
   showReverseCharge: boolean
@@ -19,6 +20,7 @@ interface FlowBulkEditDialogProps {
 // backend's model_fields_set semantics.
 export function FlowBulkEditDialog({
   count,
+  account,
   categories,
   showReverseCharge,
   onCancel,
@@ -141,12 +143,18 @@ export function FlowBulkEditDialog({
             >
               <option value="">No payment (compte courant associés)</option>
               {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>
+                <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
                   {PAYMENT_METHOD_LABELS[m]}
                 </option>
               ))}
             </select>
           </div>
+          {applyPayment && paymentMethod === 'visa' && (
+            <p className="form-hint">
+              Also clears any stored payment date on the selected flows - Visa flows use the
+              account's Visa payment day instead.
+            </p>
+          )}
 
           <div className="bulk-field">
             <label className="bulk-field-toggle">

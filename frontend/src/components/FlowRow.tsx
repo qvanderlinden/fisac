@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import type { CategoryRead, FlowCreate, FlowKind, FlowRead, PaymentMethod } from '../api/types'
-import { PAYMENT_METHOD_LABELS, amountClass, formatFlowAmount } from '../accountingDisplay'
+import type { AccountRead, CategoryRead, FlowCreate, FlowKind, FlowRead, PaymentMethod } from '../api/types'
+import { PAYMENT_METHOD_LABELS, amountClass, formatDate, formatFlowAmount, visaPaymentDate } from '../accountingDisplay'
 import { PAYMENT_METHODS } from './FlowForm'
 import { LinesEditor, linesToDrafts, linesToPayload, type LineDraft } from './LinesEditor'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { TableCell, TableRow } from '@/components/ui/table'
 interface FlowRowProps {
   flow: FlowRead
   kind: FlowKind
+  account: AccountRead
   categories: CategoryRead[]
   colSpan: number
   // Whether the reverse-charge (autoliquidation) checkbox column is shown.
@@ -29,6 +30,7 @@ interface FlowRowProps {
 export function FlowRow({
   flow,
   kind,
+  account,
   categories,
   colSpan,
   showReverseCharge,
@@ -66,6 +68,7 @@ export function FlowRow({
   }, [flow.id, expanded])
 
   const noPayment = paymentMethod === ''
+  const isVisa = paymentMethod === 'visa'
   const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') e.currentTarget.blur()
   }
@@ -103,6 +106,11 @@ export function FlowRow({
       // No payment method means no payment is made - clear the date too.
       setPaymentDate('')
       onCommit({ payment_method: null, payment_date: null })
+    } else if (value === 'visa') {
+      // Visa flows never store their own payment_date - the projection
+      // derives it from the account's Visa payment day instead.
+      setPaymentDate('')
+      onCommit({ payment_method: 'visa', payment_date: null })
     } else {
       onCommit({ payment_method: value as PaymentMethod })
     }
@@ -183,7 +191,7 @@ export function FlowRow({
           >
             <option value="">No payment</option>
             {PAYMENT_METHODS.map((m) => (
-              <option key={m} value={m}>
+              <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
                 {PAYMENT_METHOD_LABELS[m]}
               </option>
             ))}
@@ -194,7 +202,12 @@ export function FlowRow({
             type="date"
             className="cell-input"
             value={paymentDate}
-            disabled={noPayment}
+            disabled={noPayment || isVisa}
+            title={
+              isVisa && account.visa_payment_day != null
+                ? `Paid on ${formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day))} (account's Visa day)`
+                : undefined
+            }
             onChange={(e) => setPaymentDate(e.target.value)}
             onBlur={commitPaymentDate}
             aria-label="Payment date"

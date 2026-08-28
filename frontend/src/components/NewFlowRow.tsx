@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CategoryRead, FlowCreate, FlowKind, PaymentMethod } from '../api/types'
+import type { AccountRead, CategoryRead, FlowCreate, FlowKind, PaymentMethod } from '../api/types'
 import { PAYMENT_METHOD_LABELS, todayDateInputValue } from '../accountingDisplay'
 import { PAYMENT_METHODS } from './FlowForm'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { TableCell, TableRow } from '@/components/ui/table'
 
 interface NewFlowRowProps {
   kind: FlowKind
+  account: AccountRead
   categories: CategoryRead[]
   // Whether the reverse-charge (autoliquidation) checkbox column is shown.
   showReverseCharge: boolean
@@ -22,6 +23,7 @@ interface NewFlowRowProps {
 // by expanding the created row.
 export function NewFlowRow({
   kind,
+  account,
   categories,
   showReverseCharge,
   onCancel,
@@ -38,6 +40,7 @@ export function NewFlowRow({
   const [error, setError] = useState<string | null>(null)
 
   const noPayment = paymentMethod === ''
+  const isVisa = paymentMethod === 'visa'
 
   async function save() {
     if (name.trim() === '') {
@@ -57,7 +60,7 @@ export function NewFlowRow({
         category_id: categoryId === '' ? null : Number(categoryId),
         invoice_date: invoiceDate,
         payment_method: noPayment ? null : (paymentMethod as PaymentMethod),
-        payment_date: noPayment ? null : paymentDate || null,
+        payment_date: noPayment || isVisa ? null : paymentDate || null,
         paid,
         reverse_charge: showReverseCharge ? reverseCharge : false,
         lines: [],
@@ -122,13 +125,13 @@ export function NewFlowRow({
           value={paymentMethod}
           onChange={(e) => {
             setPaymentMethod(e.target.value)
-            if (e.target.value === '') setPaymentDate('')
+            if (e.target.value === '' || e.target.value === 'visa') setPaymentDate('')
           }}
           aria-label="Payment method"
         >
           <option value="">No payment</option>
           {PAYMENT_METHODS.map((m) => (
-            <option key={m} value={m}>
+            <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
               {PAYMENT_METHOD_LABELS[m]}
             </option>
           ))}
@@ -139,7 +142,8 @@ export function NewFlowRow({
           type="date"
           className="cell-input"
           value={paymentDate}
-          disabled={noPayment}
+          disabled={noPayment || isVisa}
+          title={isVisa ? "Visa flows use the account's Visa payment day, not a stored date" : undefined}
           onChange={(e) => setPaymentDate(e.target.value)}
           aria-label="Payment date"
         />

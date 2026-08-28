@@ -75,16 +75,18 @@ export function FlowGenerator({ kind, account, categories, onClose, onInserted }
     try {
       const response = await generateFlows(account.id, { description })
       const templateLines = linesToPayload(lines)
+      const isVisa = paymentMethod === 'visa'
       setProposals(
         response.occurrences.map((occ) => ({
           name: occ.name,
           kind,
           category_id: categoryId === '' ? null : Number(categoryId),
           invoice_date: occ.invoice_date,
-          // A "No payment" template nulls the date to satisfy the
-          // no-method=>no-date rule; otherwise fall back to the invoice date
-          // when the model left payment_date null.
-          payment_date: noPayment ? null : (occ.payment_date ?? occ.invoice_date),
+          // A "No payment" or Visa template nulls the date - Visa flows never
+          // store one (the projection derives it from the account's Visa
+          // payment day); otherwise fall back to the invoice date when the
+          // model left payment_date null.
+          payment_date: noPayment || isVisa ? null : (occ.payment_date ?? occ.invoice_date),
           payment_method: noPayment ? null : (paymentMethod as PaymentMethod),
           paid: false,
           lines: templateLines.map((l) => ({ ...l })),
@@ -151,7 +153,7 @@ export function FlowGenerator({ kind, account, categories, onClose, onInserted }
               <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
                 <option value="">No payment (compte courant associés)</option>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>
+                  <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
                     {PAYMENT_METHOD_LABELS[m]}
                   </option>
                 ))}

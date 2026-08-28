@@ -11,7 +11,7 @@ from fisac.db import get_session
 from fisac.dependencies import get_account
 from fisac.fractional_index import key_between
 from fisac.llm import generate_schedule
-from fisac.models import Account, Category, Flow, FlowKind, FlowLine
+from fisac.models import Account, Category, Flow, FlowKind, FlowLine, PaymentMethod
 from fisac.ordering import move_sort_key, next_sort_key
 from fisac.schemas import (
     FlowBulkCreate,
@@ -89,6 +89,14 @@ async def _validate_category(session: AsyncSession, account_id: int, category_id
         raise HTTPException(status_code=400, detail="Invalid category for this account")
 
 
+def _validate_visa(account: Account, payment_method: PaymentMethod | None) -> None:
+    if payment_method == PaymentMethod.VISA and account.visa_payment_day is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Set the account's Visa payment day before using Visa as a payment method",
+        )
+
+
 def _add_lines(session: AsyncSession, flow_id: int, lines: list[FlowLineCreate]) -> None:
     for payload, sort_key in zip(lines, _line_sort_keys(len(lines))):
         session.add(
@@ -161,6 +169,7 @@ async def create_flows_bulk(
 ) -> list[FlowRead]:
     for item in payload.flows:
         await _validate_category(session, account.id, item.category_id)
+        _validate_visa(account, item.payment_method)
     # One transaction for the whole batch; ascending sort keys chained after
     # the account's current last flow (same idiom as _line_sort_keys).
     sort_key = await next_sort_key(session, Flow, Flow.account_id == account.id)
@@ -201,6 +210,8 @@ async def update_flows_bulk(
 
     if "category_id" in fields:
         await _validate_category(session, account.id, payload.category_id)
+    if "payment_method" in fields:
+        _validate_visa(account, payload.payment_method)
 
     result = await session.execute(
         select(Flow).where(Flow.account_id == account.id, Flow.id.in_(payload.flow_ids))
@@ -225,9 +236,10 @@ async def update_flows_bulk(
             flow.category_id = payload.category_id
         if "payment_method" in fields:
             flow.payment_method = payload.payment_method
-            # No method means no payment is made, so no payment_date can remain
-            # (mirrors ck_flows_no_method_no_payment_date).
-            if payload.payment_method is None:
+            # No method means no payment is made, and Visa never stores its own
+            # date (mirrors ck_flows_no_method_no_payment_date and
+            # ck_flows_no_visa_payment_date).
+            if payload.payment_method is None or payload.payment_method == PaymentMethod.VISA:
                 flow.payment_date = None
         if "paid" in fields:
             flow.paid = payload.paid
@@ -286,6 +298,7 @@ async def create_flow(
     session: AsyncSession = Depends(get_session),
 ) -> FlowRead:
     await _validate_category(session, account.id, payload.category_id)
+    _validate_visa(account, payload.payment_method)
     sort_key = await next_sort_key(session, Flow, Flow.account_id == account.id)
     flow = Flow(
         account_id=account.id,
@@ -310,9 +323,11 @@ async def create_flow(
 async def update_flow(
     payload: FlowUpdate,
     flow: Flow = Depends(_get_flow),
+    account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ) -> FlowRead:
     await _validate_category(session, flow.account_id, payload.category_id)
+    _validate_visa(account, payload.payment_method)
     flow.name = payload.name
     flow.kind = payload.kind
     flow.category_id = payload.category_id

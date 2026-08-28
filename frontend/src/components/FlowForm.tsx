@@ -11,6 +11,7 @@ import {
   FLOW_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
   addDaysFrom,
+  formatDate,
   todayDateInputValue,
   visaPaymentDate,
 } from '../accountingDisplay'
@@ -71,6 +72,7 @@ export function FlowForm({
   const [error, setError] = useState<string | null>(null)
 
   const noPayment = paymentMethod === ''
+  const isVisa = paymentMethod === 'visa'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -83,7 +85,7 @@ export function FlowForm({
         category_id: categoryId === '' ? null : Number(categoryId),
         invoice_date: invoiceDate,
         payment_method: noPayment ? null : (paymentMethod as PaymentMethod),
-        payment_date: noPayment ? null : paymentDate || null,
+        payment_date: noPayment || isVisa ? null : paymentDate || null,
         paid,
         lines: linesToPayload(lines),
       }
@@ -147,46 +149,46 @@ export function FlowForm({
         <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
           <option value="">No payment (compte courant associés)</option>
           {PAYMENT_METHODS.map((m) => (
-            <option key={m} value={m}>
+            <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
               {PAYMENT_METHOD_LABELS[m]}
+              {m === 'visa' && account.visa_payment_day == null ? ' (set account Visa day first)' : ''}
             </option>
           ))}
         </select>
       </label>
 
-      {!noPayment && (
-        <label className="field">
-          <span>Payment date (cashflow)</span>
-          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
-          <span className="autofill-row">
-            {paymentMethod === 'visa' && account.visa_payment_day != null && (
-              <button
-                type="button"
-                className="btn-link"
-                onClick={() => setPaymentDate(visaPaymentDate(invoiceDate, account.visa_payment_day!))}
-              >
-                Visa day ({account.visa_payment_day})
-              </button>
-            )}
-            <span className="offset-fill">
-              invoice +
-              <input
-                type="number"
-                min="0"
-                value={offsetDays}
-                onChange={(e) => setOffsetDays(e.target.value)}
-              />
-              days
-              <button
-                type="button"
-                className="btn-link"
-                onClick={() => setPaymentDate(addDaysFrom(invoiceDate, Number(offsetDays) || 0))}
-              >
-                apply
-              </button>
+      {isVisa ? (
+        <p className="form-hint">
+          {account.visa_payment_day != null
+            ? `Will be paid on ${formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day))} (account's Visa day).`
+            : "Set the account's Visa payment day before using Visa."}
+        </p>
+      ) : (
+        !noPayment && (
+          <label className="field">
+            <span>Payment date (cashflow)</span>
+            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+            <span className="autofill-row">
+              <span className="offset-fill">
+                invoice +
+                <input
+                  type="number"
+                  min="0"
+                  value={offsetDays}
+                  onChange={(e) => setOffsetDays(e.target.value)}
+                />
+                days
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => setPaymentDate(addDaysFrom(invoiceDate, Number(offsetDays) || 0))}
+                >
+                  apply
+                </button>
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )
       )}
 
       <LinesEditor lines={lines} onChange={setLines} />

@@ -1,16 +1,16 @@
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fisac.db import get_session
 from fisac.dependencies import get_account
-from fisac.models import Account, Flow, FlowKind, FlowLine
+from fisac.models import Account, Flow, FlowKind, FlowLine, PaymentMethod
 from fisac.schemas import AccountProjection, ProjectionFlow, ProjectionPoint
 
 router = APIRouter(prefix="/api/accounts/{account_id}/projection", tags=["projection"])
@@ -23,6 +23,32 @@ def _signed(flow: ProjectionFlow) -> Decimal:
     # ProjectionFlow.amount is the unsigned gross magnitude; the sign is
     # applied here, the one place a running balance is computed.
     return flow.amount if flow.kind == FlowKind.REVENUE else -flow.amount
+
+
+def _visa_payment_date(invoice_date: date, visa_day: int) -> date:
+    # The next occurrence of day-of-month visa_day on/after invoice_date - the
+    # invoice month if that day hasn't passed yet, otherwise the next month.
+    # Mirrors frontend/src/accountingDisplay.ts's visaPaymentDate, including
+    # its date-overflow rollover (e.g. day 31 in a 30-day month rolls into the
+    # following month).
+    candidate = date(invoice_date.year, invoice_date.month, 1) + timedelta(days=visa_day - 1)
+    if candidate < invoice_date:
+        if invoice_date.month == 12:
+            next_month_start = date(invoice_date.year + 1, 1, 1)
+        else:
+            next_month_start = date(invoice_date.year, invoice_date.month + 1, 1)
+        candidate = next_month_start + timedelta(days=visa_day - 1)
+    return candidate
+
+
+def _effective_payment_date(flow: Flow, account: Account) -> date | None:
+    # A Visa flow never stores its own payment_date (ck_flows_no_visa_payment_
+    # date) - its effective date for cashflow purposes is derived here instead.
+    if flow.payment_date is not None:
+        return flow.payment_date
+    if flow.payment_method == PaymentMethod.VISA and account.visa_payment_day is not None:
+        return _visa_payment_date(flow.invoice_date, account.visa_payment_day)
+    return None
 
 
 def _gross(lines: list[FlowLine], reverse_charge: bool = False) -> Decimal:
@@ -49,17 +75,18 @@ async def get_projection(
     # no independent start date. A flow already marked paid is assumed already
     # reflected in current_balance, so it's excluded from the running sum - but
     # an unpaid flow still counts even if its payment_date has elapsed (overdue
-    # but unpaid), hence OR'ing in unpaid regardless of date. Flows with a NULL
-    # payment_date (no payment made) never reach cashflow.
+    # but unpaid), hence including it regardless of date below. Flows with no
+    # effective payment date (no payment made) never reach cashflow.
     as_of = date.today()
     range_end = to_date or (as_of + _DEFAULT_HORIZON)
 
+    # Every flow that could have an effective date is loaded (payment_date set,
+    # or a Visa flow whose date the projection computes below) - the date-range
+    # filtering happens in Python once that effective date is known.
     result = await session.execute(
         select(Flow).where(
             Flow.account_id == account.id,
-            Flow.payment_date.is_not(None),
-            Flow.payment_date <= range_end,
-            or_(Flow.payment_date >= as_of, Flow.paid.is_(False)),
+            or_(Flow.payment_date.is_not(None), Flow.payment_method == PaymentMethod.VISA),
         )
     )
     flows = list(result.scalars().all())
@@ -72,23 +99,32 @@ async def get_projection(
         for line in lines_result.scalars().all():
             lines_by_flow[line.flow_id].append(line)
 
-    # A flow whose payment_date has elapsed but is still unpaid is bucketed at
-    # as_of (the chart/table are anchored there), while sort_date keeps its true
-    # date so same-bucket flows still list chronologically.
+    # A flow whose effective date has elapsed but is still unpaid is bucketed
+    # at as_of (the chart/table are anchored there), while sort_date keeps its
+    # true date so same-bucket flows still list chronologically.
     dated_flows: list[tuple[date, date, ProjectionFlow]] = []
+    next_flow_date: date | None = None
     for flow in flows:
-        assert flow.payment_date is not None  # guaranteed by the query filter
+        effective_date = _effective_payment_date(flow, account)
+        if effective_date is None:
+            continue
+        if effective_date > range_end:
+            if next_flow_date is None or effective_date < next_flow_date:
+                next_flow_date = effective_date
+            continue
+        if effective_date < as_of and flow.paid:
+            continue
         dated_flows.append(
             (
-                max(flow.payment_date, as_of),
-                flow.payment_date,
+                max(effective_date, as_of),
+                effective_date,
                 ProjectionFlow(
                     id=flow.id,
                     name=flow.name,
                     kind=flow.kind,
                     amount=_gross(lines_by_flow[flow.id], flow.reverse_charge),
                     invoice_date=flow.invoice_date,
-                    payment_date=flow.payment_date,
+                    payment_date=effective_date,
                     paid=flow.paid,
                 ),
             )
@@ -104,13 +140,6 @@ async def get_projection(
             (_signed(f) for f in day_flows if not f.paid), start=Decimal("0")
         )
         points.append(ProjectionPoint(date=day, flows=day_flows, balance=running_balance))
-
-    next_flow_date = await session.scalar(
-        select(func.min(Flow.payment_date)).where(
-            Flow.account_id == account.id,
-            Flow.payment_date > range_end,
-        )
-    )
 
     return AccountProjection(
         as_of=as_of,
