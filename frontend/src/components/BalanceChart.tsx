@@ -138,6 +138,12 @@ export function BalanceChart({
     return ticks
   }, [minTime, timeSpan])
 
+  // Gray only applies when the account has zero flows anywhere in the
+  // selected window - a real flow followed by a quiet stretch (e.g. last
+  // flow March 20, window ends March 31) is fully known out to the window
+  // edge, even though flows may continue beyond it, so it stays colored.
+  const hasForecastGap = points.length === 0 && maxTime > times[times.length - 1]
+
   const activeIndex = selected ?? allPoints.length - 1
   const active = allPoints[activeIndex]
   // allPoints[0] is the synthetic asOf/startingBalance entry prepended above,
@@ -213,6 +219,7 @@ export function BalanceChart({
 
         {coords.map((point, i) => {
           const nextX = i < coords.length - 1 ? coords[i + 1].x : rightEdgeX
+          const isForecastGap = i === coords.length - 1 && hasForecastGap
           const isPositive = allPoints[i].balance >= 0
           return (
             <rect
@@ -221,7 +228,13 @@ export function BalanceChart({
               y={Math.min(point.y, yZero)}
               width={Math.max(nextX - point.x, 0)}
               height={Math.abs(point.y - yZero)}
-              className={isPositive ? 'balance-area-positive' : 'balance-area-negative'}
+              className={
+                isForecastGap
+                  ? 'balance-area-empty'
+                  : isPositive
+                    ? 'balance-area-positive'
+                    : 'balance-area-negative'
+              }
             />
           )
         })}
