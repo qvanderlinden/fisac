@@ -972,11 +972,6 @@ h4 {
   opacity: 0.1;
 }
 
-.balance-area-empty {
-  fill: var(--text-muted);
-  opacity: 0.12;
-}
-
 .crosshair {
   stroke: var(--text-muted);
   stroke-width: 1;
