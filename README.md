@@ -96,5 +96,3 @@ the network — it does not start one. Its CMD applies migrations, then serves o
 
 Not configured. The image built above is the only deployable artifact; how it
 gets TLS, a hostname, and a production Postgres instance is not settled.
-
-dad
