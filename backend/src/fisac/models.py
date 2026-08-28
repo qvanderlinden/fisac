@@ -117,8 +117,11 @@ class Flow(Base):
         # A Visa flow's actual payment date is the account's next
         # visa_payment_day on/after invoice_date, computed by the projection -
         # never stored on the flow itself.
+        # The native enum's Postgres labels are the Python member *names*
+        # (VISA), not their .value ('visa') - matches how the initial
+        # migration declared the enum's labels.
         CheckConstraint(
-            "payment_method != 'visa' OR payment_date IS NULL",
+            "payment_method != 'VISA' OR payment_date IS NULL",
             name="ck_flows_no_visa_payment_date",
         ),
         Index("ix_flows_account_payment_date", "account_id", "payment_date"),

@@ -19,12 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # A Visa flow's actual payment date is derived by the projection from the
     # account's visa_payment_day, never stored on the flow - null out any
-    # existing rows before adding the constraint that enforces it.
-    op.execute("UPDATE fisac.flows SET payment_date = NULL WHERE payment_method = 'visa'")
+    # existing rows before adding the constraint that enforces it. The native
+    # enum's Postgres label is the Python member's *name* (VISA), not its
+    # .value ('visa') - see the 'VISA' literal in 0001_init's payment_method
+    # enum definition.
+    op.execute("UPDATE fisac.flows SET payment_date = NULL WHERE payment_method = 'VISA'")
     op.create_check_constraint(
         'ck_flows_no_visa_payment_date',
         'flows',
-        "payment_method != 'visa' OR payment_date IS NULL",
+        "payment_method != 'VISA' OR payment_date IS NULL",
         schema='fisac',
     )
 
