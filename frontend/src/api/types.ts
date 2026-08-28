@@ -175,6 +175,7 @@ export interface ProjectionFlow {
   amount: string
   invoice_date: string
   payment_date: string
+  payment_method: PaymentMethod | null
   paid: boolean
 }
 

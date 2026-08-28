@@ -125,6 +125,7 @@ async def get_projection(
                     amount=_gross(lines_by_flow[flow.id], flow.reverse_charge),
                     invoice_date=flow.invoice_date,
                     payment_date=effective_date,
+                    payment_method=flow.payment_method,
                     paid=flow.paid,
                 ),
             )

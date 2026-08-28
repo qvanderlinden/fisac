@@ -11,11 +11,13 @@ import {
 } from '../api/client'
 import type { AccountProjection, AccountRead, CategoryRead, FlowRead, ProjectionFlow } from '../api/types'
 import {
+  PAYMENT_METHOD_ICONS,
   addMonthsFrom,
   amountClass,
   formatAmount,
   formatDate,
   formatFlowAmount,
+  paymentMethodLabel,
   todayDateInputValue,
 } from '../accountingDisplay'
 import { BalanceChart, type WindowOption } from './BalanceChart'
@@ -216,15 +218,25 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
                   <thead>
                     <tr>
                       <th>Payment date</th>
+                      <th className="payment-icon-col"></th>
                       <th>Name</th>
                       <th className="amount-col">Amount</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(({ flow, key }) => (
+                    {rows.map(({ flow, key }) => {
+                      const MethodIcon = flow.payment_method ? PAYMENT_METHOD_ICONS[flow.payment_method] : null
+                      return (
                       <tr key={key}>
                         <td>{formatDate(flow.payment_date)}</td>
+                        <td className="payment-icon-col">
+                          {MethodIcon && (
+                            <span title={paymentMethodLabel(flow.payment_method)}>
+                              <MethodIcon className="payment-icon" aria-hidden />
+                            </span>
+                          )}
+                        </td>
                         <td className="cell-title">{flow.name}</td>
                         <td className={`amount-cell ${amountClass(flow.kind)}`}>
                           {formatFlowAmount(flow.kind, flow.amount)}
@@ -248,7 +260,8 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
                           </span>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               )

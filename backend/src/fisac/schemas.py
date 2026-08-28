@@ -235,6 +235,7 @@ class ProjectionFlow(BaseModel):
     amount: Decimal
     invoice_date: date
     payment_date: date
+    payment_method: PaymentMethod | None
     paid: bool
 
 

@@ -1,3 +1,4 @@
+import { CalendarCheck, CreditCard, Landmark, type LucideIcon } from 'lucide-react'
 import type { FlowKind, PaymentMethod } from './api/types'
 
 export const FLOW_KIND_LABELS: Record<FlowKind, string> = {
@@ -16,6 +17,12 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 // associés) - such a flow has no payment_date and never reaches cashflow.
 export function paymentMethodLabel(method: PaymentMethod | null): string {
   return method ? PAYMENT_METHOD_LABELS[method] : 'No payment'
+}
+
+export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, LucideIcon> = {
+  direct_debit: CalendarCheck,
+  bank_transfer: Landmark,
+  visa: CreditCard,
 }
 
 export function amountClass(kind: FlowKind): 'amount-positive' | 'amount-negative' {
