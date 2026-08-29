@@ -43,9 +43,13 @@ export function VatView({ account }: VatViewProps) {
 
   const selected = vat?.quarters.find((q) => q.quarter === quarter) ?? null
   // Flows that carry no VAT (e.g. uncategorized expenses, which recover 0%)
-  // add nothing to either total, so they're just noise in this table.
+  // add nothing to either total, so they're just noise in this table. Reverse
+  // charge (autoliquidation) flows are always listed regardless - even a
+  // fully-deductible one that nets to zero still has to be reported.
   const visibleFlows =
-    selected?.flows.filter((f) => Number(f.output_vat) !== 0 || Number(f.deductible_vat) !== 0) ?? []
+    selected?.flows.filter(
+      (f) => f.reverse_charge || Number(f.output_vat) !== 0 || Number(f.deductible_vat) !== 0,
+    ) ?? []
 
   return (
     <div className="vat-view">
