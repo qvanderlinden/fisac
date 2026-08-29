@@ -42,6 +42,10 @@ export function VatView({ account }: VatViewProps) {
   }, [account.id, year])
 
   const selected = vat?.quarters.find((q) => q.quarter === quarter) ?? null
+  // Flows that carry no VAT (e.g. uncategorized expenses, which recover 0%)
+  // add nothing to either total, so they're just noise in this table.
+  const visibleFlows =
+    selected?.flows.filter((f) => Number(f.output_vat) !== 0 || Number(f.deductible_vat) !== 0) ?? []
 
   return (
     <div className="vat-view">
@@ -120,14 +124,14 @@ export function VatView({ account }: VatViewProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.flows.length === 0 && (
+                  {visibleFlows.length === 0 && (
                     <tr>
                       <td colSpan={4} className="empty-state">
-                        No flows in this quarter.
+                        No flows with a VAT contribution in this quarter.
                       </td>
                     </tr>
                   )}
-                  {selected.flows.map((f) => (
+                  {visibleFlows.map((f) => (
                     <tr key={f.id}>
                       <td className="cell-title">
                         {f.name}
