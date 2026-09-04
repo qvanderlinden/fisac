@@ -1,30 +1,30 @@
 :root {
-  --surface-1: #fcfcfb;
-  --page-plane: #f7f7f5;
-  --sidebar-bg: #f1f0eb;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --gridline: #e1e0d9;
-  --baseline: #c3c2b7;
-  --series-1: #2a78d6;
-  --danger: #d03b3b;
-  --border: rgba(11, 11, 11, 0.1);
-  --shadow: 0 20px 50px rgba(11, 11, 11, 0.16);
+  --surface-1: #fdfcfa;
+  --page-plane: #faf8f4;
+  --sidebar-bg: #f2ece1;
+  --text-primary: #211d17;
+  --text-secondary: #6b6456;
+  --text-muted: #8a8271;
+  --gridline: #e7e0d3;
+  --baseline: #c9c1af;
+  --series-1: #b4552f;
+  --danger: #9c3b2f;
+  --border: rgba(33, 29, 23, 0.1);
+  --shadow: 0 20px 50px rgba(33, 29, 23, 0.16);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface-1: #1a1a19;
-    --page-plane: #121211;
-    --sidebar-bg: #17110d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --gridline: #2c2c2a;
-    --baseline: #383835;
-    --series-1: #3987e5;
-    --danger: #e66767;
+    --surface-1: #211f1a;
+    --page-plane: #1a1815;
+    --sidebar-bg: #17140f;
+    --text-primary: #f5f1e8;
+    --text-secondary: #c9c2b3;
+    --text-muted: #948b78;
+    --gridline: #3a352c;
+    --baseline: #4a443a;
+    --series-1: #d97a4f;
+    --danger: #e0796a;
     --border: rgba(255, 255, 255, 0.1);
     --shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   }
@@ -36,7 +36,7 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--page-plane);
   color: var(--text-primary);
 }
@@ -50,7 +50,8 @@ h1,
 h2,
 h3,
 h4 {
-  font-family: inherit;
+  font-family: 'Newsreader', serif;
+  font-weight: 600;
 }
 
 /* App shell: fixed sidebar + scrollable main content, desktop-first */
@@ -72,9 +73,11 @@ h4 {
 }
 
 .sidebar-brand {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-family: 'Newsreader', serif;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   padding: 0 8px;
   margin-bottom: 24px;
 }
@@ -92,8 +95,9 @@ h4 {
   gap: 10px;
   width: 100%;
   padding: 9px 10px;
-  border-radius: 8px;
+  border-radius: 0;
   border: none;
+  border-bottom: 1px solid transparent;
   background: none;
   color: var(--text-secondary);
   font-size: 0.9rem;
@@ -101,14 +105,16 @@ h4 {
 }
 
 .sidebar-nav-item:hover {
-  background: var(--border);
+  background: none;
+  color: var(--text-primary);
 }
 
 .sidebar-nav-item.active {
-  background: var(--surface-1);
+  background: none;
   color: var(--series-1);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+  border-bottom-color: var(--series-1);
+  box-shadow: none;
 }
 
 .main-content {
@@ -170,6 +176,15 @@ h4 {
   margin-bottom: 24px;
 }
 
+.account-profile-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0 10px;
+  margin-bottom: 6px;
+}
+
 .account-trigger-row {
   display: flex;
   align-items: center;
@@ -206,8 +221,11 @@ h4 {
   border: 1px solid var(--border);
   background: var(--surface-1);
   color: var(--text-muted);
-  font-size: 1.3rem;
-  line-height: 1;
+}
+
+.account-settings-button svg {
+  width: 15px;
+  height: 15px;
 }
 
 .account-settings-button:hover {
@@ -225,9 +243,14 @@ h4 {
 
 .account-trigger-chevron {
   flex-shrink: 0;
+  width: 14px;
+  height: 14px;
   color: var(--text-muted);
-  font-size: 1.1rem;
-  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.account-trigger-chevron.is-open {
+  transform: rotate(180deg);
 }
 
 .account-dropdown-backdrop {
@@ -1413,6 +1436,11 @@ h4 {
   cursor: grabbing;
 }
 
+.drag-handle:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
 .drag-handle svg {
   width: 16px;
   height: 16px;
@@ -1760,29 +1788,51 @@ h4 {
 }
 
 /* Always-visible "New entry" row at the bottom of the grid box. */
-.flow-newentry {
+.flow-newentry-bar {
   flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--gridline);
+  background: var(--surface-1);
+}
+
+.flow-newentry,
+.flow-newentry-secondary {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 12px 16px;
-  border: none;
-  border-top: 1px solid var(--gridline);
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  font-size: 0.88rem;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
+.flow-newentry {
+  border: none;
+  background: var(--series-1);
+  color: var(--surface-1);
+}
+
 .flow-newentry:hover {
-  background: var(--page-plane);
+  filter: brightness(0.92);
+}
+
+.flow-newentry-secondary {
+  border: 1px solid var(--border);
+  background: var(--surface-1);
   color: var(--text-primary);
 }
 
+.flow-newentry-secondary:hover {
+  background: var(--page-plane);
+}
+
 .flow-newentry-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 /* Unsaved draft row (from "New entry"). */

@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { GripVertical, Trash2 } from 'lucide-react'
 import type { AccountRead, CategoryRead, FlowCreate, FlowKind, FlowRead, PaymentMethod } from '../api/types'
-import { PAYMENT_METHOD_LABELS, amountClass, formatDate, formatFlowAmount, visaPaymentDate } from '../accountingDisplay'
+import {
+  PAYMENT_METHOD_ICONS,
+  PAYMENT_METHOD_LABELS,
+  amountClass,
+  formatDate,
+  formatFlowAmount,
+  paymentMethodLabel,
+  visaPaymentDate,
+} from '../accountingDisplay'
 import { PAYMENT_METHODS } from './FlowForm'
 import { LinesEditor, linesToDrafts, linesToPayload, type LineDraft } from './LinesEditor'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TableCell, TableRow } from '@/components/ui/table'
+
+type DropPos = 'above' | 'below'
 
 interface FlowRowProps {
   flow: FlowRead
@@ -25,6 +35,17 @@ interface FlowRowProps {
   onCommit: (changes: Partial<FlowCreate>) => Promise<void>
   onTogglePaid: () => Promise<void>
   onDelete: () => Promise<void>
+  // Manual drag-to-reorder only makes sense in the natural (unsorted) order -
+  // the parent disables it (grip still shown, inert) whenever a column sort
+  // is active.
+  reorderable: boolean
+  dragging: boolean
+  // Where the drop indicator shows on this row (null = not a drop target now).
+  dropPos: DropPos | null
+  onDragStart: () => void
+  onDragOverRow: (pos: DropPos) => void
+  onDrop: () => void
+  onDragEnd: () => void
 }
 
 export function FlowRow({
@@ -41,6 +62,13 @@ export function FlowRow({
   onCommit,
   onTogglePaid,
   onDelete,
+  reorderable,
+  dragging,
+  dropPos,
+  onDragStart,
+  onDragOverRow,
+  onDrop,
+  onDragEnd,
 }: FlowRowProps) {
   // Header-field drafts, committed on blur/change. Reseeded whenever the flow
   // prop changes (e.g. after a refresh) so a rejected edit reverts to server
@@ -125,9 +153,47 @@ export function FlowRow({
     }
   }
 
+  const rowClass = [
+    dragging ? 'is-dragging' : '',
+    dropPos === 'above' ? 'drop-above' : '',
+    dropPos === 'below' ? 'drop-below' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const MethodIcon = flow.payment_method ? PAYMENT_METHOD_ICONS[flow.payment_method] : null
+
   return (
     <>
-      <TableRow data-state={selected ? 'selected' : undefined}>
+      <TableRow
+        data-state={selected ? 'selected' : undefined}
+        className={rowClass || undefined}
+        onDragOver={(e) => {
+          if (!reorderable) return
+          e.preventDefault()
+          const rect = e.currentTarget.getBoundingClientRect()
+          onDragOverRow(e.clientY < rect.top + rect.height / 2 ? 'above' : 'below')
+        }}
+        onDrop={(e) => {
+          if (!reorderable) return
+          e.preventDefault()
+          onDrop()
+        }}
+      >
+        <TableCell className="drag-handle-cell">
+          <button
+            type="button"
+            className="drag-handle"
+            draggable={reorderable}
+            onDragStart={reorderable ? onDragStart : undefined}
+            onDragEnd={reorderable ? onDragEnd : undefined}
+            disabled={!reorderable}
+            aria-label={`Reorder ${flow.name}`}
+            title={reorderable ? undefined : 'Clear the sort to reorder manually'}
+          >
+            <GripVertical />
+          </button>
+        </TableCell>
         <TableCell className="flow-expand-cell">
           <button
             type="button"
@@ -217,6 +283,13 @@ export function FlowRow({
           <div className={`text-right amount-cell ${amountClass(kind)}`}>
             {formatFlowAmount(kind, flow.amount_gross)}
           </div>
+        </TableCell>
+        <TableCell className="payment-icon-col">
+          {MethodIcon && (
+            <span title={paymentMethodLabel(flow.payment_method)}>
+              <MethodIcon className="payment-icon" aria-hidden />
+            </span>
+          )}
         </TableCell>
         {showReverseCharge && (
           <TableCell>

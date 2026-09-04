@@ -38,7 +38,15 @@ export default defineConfig({
     // from a remote dev workspace behind a proxy additionally needs `host`
     // (vite's default bind is IPv6-only), `allowedHosts` for the proxied
     // hostname, and an `hmr` override so the websocket dials the proxy rather
-    // than :5173.
+    // than :5173. The Coder template (coder/main.tf) covers the first by
+    // launching with `--host 0.0.0.0`; the two below are for reaching this
+    // through Coder's HTTPS app proxy (the "Frontend" dashboard link) rather
+    // than a direct `coder port-forward` to :5173 - which needs neither and
+    // would actually break if the proxy's port ever isn't 443.
+    allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+    },
     proxy: {
       '/api': { target: 'http://localhost:8000', changeOrigin: true },
     },

@@ -44,7 +44,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-brand">Fisac</div>
+        <div className="sidebar-brand">Fiscality & Accounting</div>
 
         <AccountSwitcher
           accounts={accounts}
@@ -59,31 +59,31 @@ export default function App() {
               className={`sidebar-nav-item${tab === 'revenues' ? ' active' : ''}`}
               onClick={() => setTab('revenues')}
             >
-              💰 Revenues
+              Revenues
             </button>
             <button
               className={`sidebar-nav-item${tab === 'expenses' ? ' active' : ''}`}
               onClick={() => setTab('expenses')}
             >
-              🧾 Expenses
+              Expenses
             </button>
             <button
               className={`sidebar-nav-item${tab === 'categories' ? ' active' : ''}`}
               onClick={() => setTab('categories')}
             >
-              🏷️ Categories
+              Categories
             </button>
             <button
               className={`sidebar-nav-item${tab === 'projection' ? ' active' : ''}`}
               onClick={() => setTab('projection')}
             >
-              📊 Cashflow Projection
+              Cashflow Projection
             </button>
             <button
               className={`sidebar-nav-item${tab === 'vat' ? ' active' : ''}`}
               onClick={() => setTab('vat')}
             >
-              🧮 VAT
+              VAT
             </button>
           </nav>
         )}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronDown, Pencil } from 'lucide-react'
 import { createAccount, deleteAccount, updateAccount } from '../api/client'
 import type { AccountRead } from '../api/types'
 import { formatAmount } from '../accountingDisplay'
@@ -28,6 +29,7 @@ export function AccountSwitcher({
 
   return (
     <div className="account-dropdown-wrap">
+      <div className="account-profile-label">Profile</div>
       <div className="account-trigger-row">
         <button className="account-trigger" onClick={() => setOpen((v) => !v)}>
           <span className="account-trigger-info">
@@ -36,7 +38,10 @@ export function AccountSwitcher({
               <span className="sidebar-account-balance">{formatAmount(selected.current_balance)}</span>
             )}
           </span>
-          <span className="account-trigger-chevron">▾</span>
+          <ChevronDown
+            className={open ? 'account-trigger-chevron is-open' : 'account-trigger-chevron'}
+            aria-hidden
+          />
         </button>
         {selected && (
           <button
@@ -46,7 +51,7 @@ export function AccountSwitcher({
             aria-label={`Settings for ${selected.name}`}
             title={`Settings for ${selected.name}`}
           >
-            ⚙
+            <Pencil aria-hidden />
           </button>
         )}
       </div>

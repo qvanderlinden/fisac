@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ListFilter, MoreHorizontal, Plus, Search, Sparkles } from 'lucide-react'
+import { GripVertical, ListFilter, MoreHorizontal, Plus, Search, Sparkles } from 'lucide-react'
 import {
   bulkDeleteFlows,
   bulkUpdateFlows,
@@ -7,6 +7,7 @@ import {
   deleteFlow,
   listCategories,
   listFlows,
+  moveFlow,
   setFlowPaid,
   updateFlow,
 } from '../api/client'
@@ -29,10 +30,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Popover } from '@/components/ui/popover'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-// chevron + select + name + category + invoice + method + payment date +
-// amount + paid + delete. The reverse-charge column (expenses of VAT-registered
-// accounts only) adds one more - see columnCount below.
-const BASE_COLUMN_COUNT = 10
+// drag handle + chevron + select + name + category + invoice + method +
+// payment date + amount + payment-method icon + paid + delete. The
+// reverse-charge column (expenses of VAT-registered accounts only) adds one
+// more - see columnCount below.
+const BASE_COLUMN_COUNT = 12
 
 type SortKey =
   | 'name'
@@ -44,6 +46,9 @@ type SortKey =
   | 'paid'
 type SortDir = 'asc' | 'desc'
 type SortState = { key: SortKey; dir: SortDir } | null
+
+// Where the drop indicator shows relative to the row being dragged over.
+type DropPos = 'above' | 'below'
 
 // Each dimension is 'any' (no constraint), 'none' (empty value), or a concrete
 // value. All active dimensions are ANDed together (and with the search term).
@@ -96,6 +101,10 @@ export function FlowList({ account, kind }: FlowListProps) {
   // null = natural (server sort_key) order.
   const [sort, setSort] = useState<SortState>(null)
   const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
+  // Drag-to-reorder state: the row being dragged and where it would drop.
+  // Manual reordering only makes sense in the natural (unsorted) order.
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: number; pos: DropPos } | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -118,6 +127,8 @@ export function FlowList({ account, kind }: FlowListProps) {
     setSort(null)
     setAdding(false)
     setFilters(NO_FILTERS)
+    setDraggingId(null)
+    setDropTarget(null)
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id, kind])
@@ -227,6 +238,33 @@ export function FlowList({ account, kind }: FlowListProps) {
       }
       return next
     })
+  }
+
+  function endDrag() {
+    setDraggingId(null)
+    setDropTarget(null)
+  }
+
+  async function commitReorder() {
+    const dragId = draggingId
+    const target = dropTarget
+    endDrag()
+    if (dragId == null || target == null || target.id === dragId) return
+    // Neighbors are computed against the full (unfiltered) fetched order, so a
+    // drop inside a filtered/searched view still anchors correctly for
+    // whichever flows are actually adjacent server-side.
+    const ids = flows.map((f) => f.id).filter((id) => id !== dragId)
+    let pos = ids.indexOf(target.id)
+    if (target.pos === 'below') pos += 1
+    const afterId = ids[pos - 1] ?? null
+    const beforeId = ids[pos] ?? null
+    setError(null)
+    try {
+      await moveFlow(account.id, dragId, { after_id: afterId, before_id: beforeId })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reorder')
+    }
   }
 
   async function commitFlow(flow: FlowRead, changes: Partial<FlowCreate>) {
@@ -476,10 +514,6 @@ export function FlowList({ account, kind }: FlowListProps) {
                 </div>
               )}
             </Popover>
-
-            <button className="btn-secondary" onClick={() => setGenerating(true)}>
-              <Sparkles className="toolbar-btn-icon" aria-hidden /> Generate
-            </button>
           </div>
         </div>
       </div>
@@ -494,6 +528,7 @@ export function FlowList({ account, kind }: FlowListProps) {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="drag-handle-cell" />
                   <TableHead className="flow-expand-cell" />
                   <TableHead>
                     <Checkbox
@@ -514,6 +549,7 @@ export function FlowList({ account, kind }: FlowListProps) {
                   {sortableHead('payment_method', 'Payment method')}
                   {sortableHead('payment_date', 'Payment date')}
                   {sortableHead('amount', 'Amount', 'right')}
+                  <TableHead className="payment-icon-col" />
                   {showReverseCharge && (
                     <TableHead className="text-center" title="Reverse charge (autoliquidation)">
                       RC
@@ -542,6 +578,17 @@ export function FlowList({ account, kind }: FlowListProps) {
                     onCommit={(changes) => commitFlow(flow, changes)}
                     onTogglePaid={() => togglePaid(flow)}
                     onDelete={() => deleteRow(flow)}
+                    reorderable={sort === null}
+                    dragging={draggingId === flow.id}
+                    dropPos={dropTarget?.id === flow.id ? dropTarget.pos : null}
+                    onDragStart={() => setDraggingId(flow.id)}
+                    onDragOverRow={(pos) => {
+                      if (draggingId != null && draggingId !== flow.id) {
+                        setDropTarget({ id: flow.id, pos })
+                      }
+                    }}
+                    onDrop={commitReorder}
+                    onDragEnd={endDrag}
                   />
                 ))}
                 {adding && (
@@ -567,10 +614,17 @@ export function FlowList({ account, kind }: FlowListProps) {
             </Table>
           </div>
 
-          {/* Sticky to the viewport bottom so it's always reachable. */}
-          <button type="button" className="flow-newentry" onClick={() => setAdding(true)}>
-            <Plus className="flow-newentry-icon" aria-hidden /> New entry
-          </button>
+          {/* Sticky to the viewport bottom so it's always reachable. Generate
+              (AI-drafted batch) sits right next to New entry (single manual
+              row) since they're both ways of adding flows. */}
+          <div className="flow-newentry-bar">
+            <button type="button" className="flow-newentry-secondary" onClick={() => setGenerating(true)}>
+              <Sparkles className="flow-newentry-icon" aria-hidden /> New Entries
+            </button>
+            <button type="button" className="flow-newentry" onClick={() => setAdding(true)}>
+              <Plus className="flow-newentry-icon" aria-hidden /> New entry
+            </button>
+          </div>
         </div>
       )}
 

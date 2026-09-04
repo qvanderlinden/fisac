@@ -82,6 +82,7 @@ export function NewFlowRow({
 
   return (
     <TableRow className="flow-draft-row hover:bg-transparent" onKeyDown={onKeyDown}>
+      <TableCell className="drag-handle-cell" />
       <TableCell className="flow-expand-cell" />
       <TableCell />
       <TableCell>
@@ -151,6 +152,7 @@ export function NewFlowRow({
       <TableCell>
         <div className="text-right text-muted-foreground">—</div>
       </TableCell>
+      <TableCell className="payment-icon-col" />
       {showReverseCharge && (
         <TableCell>
           <div className="flex justify-center">
