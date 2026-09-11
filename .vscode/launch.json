@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend (uvicorn)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["fisac.main:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": true,
+      "presentation": { "group": "fullstack", "order": 1 }
+    },
+    {
+      "name": "Frontend (vite)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend",
+      "presentation": { "group": "fullstack", "order": 2 }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack (backend + frontend)",
+      "configurations": ["Backend (uvicorn)", "Frontend (vite)"],
+      "stopAll": true,
+      "presentation": { "order": 0 }
+    }
+  ]
+}
