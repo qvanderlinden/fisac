@@ -19,6 +19,10 @@ export interface AccountRead {
   // Day of the month (1-31) the account's Visa charges are paid; feeds the
   // flow form's payment_date auto-fill.
   visa_payment_day: number | null
+  // Day of the month (1-31) the Visa statement closes. An invoice dated after
+  // it lands on the next statement, so it is paid one cycle later; null means
+  // the statement closes on the payment day.
+  visa_closing_day: number | null
   sort_key: string
 }
 
@@ -28,6 +32,7 @@ export interface AccountCreate {
   is_company?: boolean
   vat_applicable?: boolean
   visa_payment_day?: number | null
+  visa_closing_day?: number | null
 }
 
 export interface AccountUpdate {
@@ -36,6 +41,7 @@ export interface AccountUpdate {
   is_company?: boolean
   vat_applicable?: boolean
   visa_payment_day?: number | null
+  visa_closing_day?: number | null
 }
 
 export interface CategoryRead {

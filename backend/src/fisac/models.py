@@ -58,15 +58,24 @@ class Account(Base):
     # Day of the month the account's Visa charges are paid (1-31). A Visa flow
     # never stores its own payment_date (see ck_flows_no_visa_payment_date) -
     # this is what the projection uses instead to compute the flow's effective
-    # payment date (next occurrence of this day on/after the flow's
-    # invoice_date).
+    # payment date, together with visa_closing_day below.
     visa_payment_day: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # Day of the month the Visa statement closes (1-31). An invoice dated after
+    # it lands on the *next* statement instead: with closing 25 / payment 5, an
+    # invoice on Mar 26 closes Apr 25 and is paid May 5, while one on Mar 25
+    # closes that same day and is paid Apr 5. NULL means "closes on the payment
+    # day", which is exactly the behavior from before this column existed.
+    visa_closing_day: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
 
     __table_args__ = (
         CheckConstraint(
             "visa_payment_day IS NULL OR (visa_payment_day >= 1 AND visa_payment_day <= 31)",
             name="ck_accounts_visa_payment_day_range",
+        ),
+        CheckConstraint(
+            "visa_closing_day IS NULL OR (visa_closing_day >= 1 AND visa_closing_day <= 31)",
+            name="ck_accounts_visa_closing_day_range",
         ),
         Index("ix_accounts_sort_key", "sort_key"),
     )
@@ -114,8 +123,8 @@ class Flow(Base):
             "payment_method IS NOT NULL OR payment_date IS NULL",
             name="ck_flows_no_method_no_payment_date",
         ),
-        # A Visa flow's actual payment date is the account's next
-        # visa_payment_day on/after invoice_date, computed by the projection -
+        # A Visa flow's actual payment date is derived by the projection from
+        # invoice_date and the account's visa_closing_day/visa_payment_day -
         # never stored on the flow itself.
         # The native enum's Postgres labels are the Python member *names*
         # (VISA), not their .value ('visa') - matches how the initial
@@ -145,7 +154,7 @@ class Flow(Base):
     # payment_date means no dated payment -> excluded from the projection,
     # except for a Visa flow (see ck_flows_no_visa_payment_date), whose
     # effective payment date the projection derives from invoice_date +
-    # Account.visa_payment_day instead.
+    # Account.visa_closing_day/visa_payment_day instead.
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     payment_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     payment_method: Mapped[PaymentMethod | None] = mapped_column(

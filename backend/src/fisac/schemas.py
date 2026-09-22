@@ -23,6 +23,9 @@ class AccountCreate(BaseModel):
     # before a flow can use payment_method=visa; the projection uses it to
     # compute each Visa flow's effective payment date.
     visa_payment_day: int | None = Field(default=None, ge=1, le=31)
+    # Day of the month (1-31) the Visa statement closes. An invoice dated after
+    # it is paid one statement later; null means it closes on the payment day.
+    visa_closing_day: int | None = Field(default=None, ge=1, le=31)
 
     @model_validator(mode="after")
     def _vat_only_for_companies(self) -> "AccountCreate":
@@ -37,6 +40,7 @@ class AccountUpdate(BaseModel):
     is_company: bool | None = None
     vat_applicable: bool | None = None
     visa_payment_day: int | None = Field(default=None, ge=1, le=31)
+    visa_closing_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class AccountRead(BaseModel):
@@ -48,6 +52,7 @@ class AccountRead(BaseModel):
     is_company: bool
     vat_applicable: bool
     visa_payment_day: int | None
+    visa_closing_day: int | None
     sort_key: str
 
 

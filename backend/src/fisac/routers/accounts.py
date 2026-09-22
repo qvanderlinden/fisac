@@ -46,6 +46,8 @@ async def update_account(
         account.vat_applicable = payload.vat_applicable
     if payload.visa_payment_day is not None:
         account.visa_payment_day = payload.visa_payment_day
+    if payload.visa_closing_day is not None:
+        account.visa_closing_day = payload.visa_closing_day
     if not account.is_company:
         account.vat_applicable = False
     await session.commit()

@@ -160,7 +160,7 @@ export function FlowForm({
       {isVisa ? (
         <p className="form-hint">
           {account.visa_payment_day != null
-            ? `Will be paid on ${formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day))} (account's Visa day).`
+            ? `Will be paid on ${formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day, account.visa_closing_day))} (account's Visa cycle).`
             : "Set the account's Visa payment day before using Visa."}
         </p>
       ) : (

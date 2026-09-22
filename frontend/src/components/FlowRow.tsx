@@ -205,7 +205,7 @@ export function FlowRow({
             disabled={noPayment || isVisa}
             title={
               isVisa && account.visa_payment_day != null
-                ? `Paid on ${formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day))} (account's Visa day)`
+                ? `Paid on ${formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day, account.visa_closing_day))} (account's Visa cycle)`
                 : undefined
             }
             onChange={(e) => setPaymentDate(e.target.value)}

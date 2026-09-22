@@ -25,20 +25,40 @@ def _signed(flow: ProjectionFlow) -> Decimal:
     return flow.amount if flow.kind == FlowKind.REVENUE else -flow.amount
 
 
-def _visa_payment_date(invoice_date: date, visa_day: int) -> date:
-    # The next occurrence of day-of-month visa_day on/after invoice_date - the
-    # invoice month if that day hasn't passed yet, otherwise the next month.
-    # Mirrors frontend/src/accountingDisplay.ts's visaPaymentDate, including
-    # its date-overflow rollover (e.g. day 31 in a 30-day month rolls into the
-    # following month).
-    candidate = date(invoice_date.year, invoice_date.month, 1) + timedelta(days=visa_day - 1)
-    if candidate < invoice_date:
-        if invoice_date.month == 12:
-            next_month_start = date(invoice_date.year + 1, 1, 1)
+def _day_of_month(year: int, month: int, day: int) -> date:
+    # Date overflow rolls into the following month (day 31 of a 30-day month
+    # lands on the 1st), which is acceptable for a derived date.
+    return date(year, month, 1) + timedelta(days=day - 1)
+
+
+def _next_day_of_month(reference: date, day: int) -> date:
+    # The next occurrence of day-of-month `day` on/after reference - that same
+    # month if the day hasn't passed yet, otherwise the next one.
+    candidate = _day_of_month(reference.year, reference.month, day)
+    if candidate < reference:
+        if reference.month == 12:
+            candidate = _day_of_month(reference.year + 1, 1, day)
         else:
-            next_month_start = date(invoice_date.year, invoice_date.month + 1, 1)
-        candidate = next_month_start + timedelta(days=visa_day - 1)
+            candidate = _day_of_month(reference.year, reference.month + 1, day)
     return candidate
+
+
+def _visa_payment_date(invoice_date: date, visa_day: int, closing_day: int | None) -> date:
+    # Two hops: the invoice first lands on a statement (the next closing day
+    # on/after invoice_date), and that statement is then settled on the next
+    # payment day on/after it. With closing 25 / payment 5, an invoice on
+    # Mar 26 closes Apr 25 and is paid May 5; one on Mar 25 closes that day and
+    # is paid Apr 5. Mirrors frontend/src/accountingDisplay.ts's
+    # visaPaymentDate, overflow rollover included.
+    if closing_day is None:
+        # No statement cycle configured - the charge is simply debited on the
+        # next payment day, exactly as this worked before visa_closing_day
+        # existed. Kept as its own single hop rather than folded into the two
+        # below (with closing_day = visa_day) so the overflow rollover lands
+        # identically for accounts that never set a closing day.
+        return _next_day_of_month(invoice_date, visa_day)
+    statement_close = _next_day_of_month(invoice_date, closing_day)
+    return _next_day_of_month(statement_close, visa_day)
 
 
 def _effective_payment_date(flow: Flow, account: Account) -> date | None:
@@ -47,7 +67,9 @@ def _effective_payment_date(flow: Flow, account: Account) -> date | None:
     if flow.payment_date is not None:
         return flow.payment_date
     if flow.payment_method == PaymentMethod.VISA and account.visa_payment_day is not None:
-        return _visa_payment_date(flow.invoice_date, account.visa_payment_day)
+        return _visa_payment_date(
+            flow.invoice_date, account.visa_payment_day, account.visa_closing_day
+        )
     return None
 
 

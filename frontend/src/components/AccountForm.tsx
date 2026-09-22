@@ -19,6 +19,9 @@ export function AccountForm({ initialAccount, onSubmit, onCancel, onDelete }: Ac
   const [visaPaymentDay, setVisaPaymentDay] = useState(
     initialAccount?.visa_payment_day != null ? String(initialAccount.visa_payment_day) : '',
   )
+  const [visaClosingDay, setVisaClosingDay] = useState(
+    initialAccount?.visa_closing_day != null ? String(initialAccount.visa_closing_day) : '',
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -36,6 +39,7 @@ export function AccountForm({ initialAccount, onSubmit, onCancel, onDelete }: Ac
         // backend's own normalization).
         vat_applicable: isCompany && vatApplicable,
         visa_payment_day: visaPaymentDay.trim() === '' ? null : Number(visaPaymentDay),
+        visa_closing_day: visaClosingDay.trim() === '' ? null : Number(visaClosingDay),
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -112,6 +116,23 @@ export function AccountForm({ initialAccount, onSubmit, onCancel, onDelete }: Ac
           value={visaPaymentDay}
           onChange={(e) => setVisaPaymentDay(e.target.value)}
         />
+      </label>
+
+      <label className="field">
+        <span>Visa closing day</span>
+        <input
+          type="number"
+          min="1"
+          max="31"
+          placeholder="Day of month the statement closes"
+          value={visaClosingDay}
+          onChange={(e) => setVisaClosingDay(e.target.value)}
+        />
+        <span className="form-hint">
+          Invoices dated after this day fall on the next statement. Closing 25 and payment 5:
+          an invoice on Mar 26 is paid May 5, one on Mar 25 is paid Apr 5. Leave empty to pay
+          on the payment day directly.
+        </span>
       </label>
 
       {error && <p className="form-error">{error}</p>}
