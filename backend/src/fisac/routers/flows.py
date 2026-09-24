@@ -11,7 +11,7 @@ from fisac.db import get_session
 from fisac.dependencies import get_account
 from fisac.fractional_index import key_between
 from fisac.llm import generate_schedule
-from fisac.models import Account, Category, Flow, FlowKind, FlowLine, PaymentMethod
+from fisac.models import Account, Category, Flow, FlowKind, FlowLine, LedgerAccount, PaymentMethod
 from fisac.ordering import move_sort_key, next_sort_key
 from fisac.schemas import (
     FlowBulkCreate,
@@ -89,6 +89,32 @@ async def _validate_category(session: AsyncSession, account_id: int, category_id
         raise HTTPException(status_code=400, detail="Invalid category for this account")
 
 
+async def _validate_ledger_accounts(
+    session: AsyncSession, account_id: int, lines: list[FlowLineCreate]
+) -> None:
+    """Every booked line must point at a ledger account of this same Account.
+
+    Nothing in the database enforces this: flow_lines.ledger_account_id is a
+    plain FK to ledger_accounts, which carries its own account_id, so without
+    this check one Account's lines could be booked into another Account's
+    annual accounts. One query for the whole line set, never one per line.
+    """
+    wanted = {line.ledger_account_id for line in lines if line.ledger_account_id is not None}
+    if not wanted:
+        return
+    result = await session.execute(
+        select(LedgerAccount.id).where(
+            LedgerAccount.account_id == account_id, LedgerAccount.id.in_(wanted)
+        )
+    )
+    missing = wanted - set(result.scalars().all())
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ledger account(s) for this account: {sorted(missing)}",
+        )
+
+
 def _validate_visa(account: Account, payment_method: PaymentMethod | None) -> None:
     if payment_method == PaymentMethod.VISA and account.visa_payment_day is None:
         raise HTTPException(
@@ -105,6 +131,7 @@ def _add_lines(session: AsyncSession, flow_id: int, lines: list[FlowLineCreate])
                 description=payload.description,
                 amount_net=payload.amount_net,
                 vat_rate=payload.vat_rate,
+                ledger_account_id=payload.ledger_account_id,
                 sort_key=sort_key,
             )
         )
@@ -170,6 +197,9 @@ async def create_flows_bulk(
     for item in payload.flows:
         await _validate_category(session, account.id, item.category_id)
         _validate_visa(account, item.payment_method)
+    await _validate_ledger_accounts(
+        session, account.id, [line for f in payload.flows for line in f.lines]
+    )
     # One transaction for the whole batch; ascending sort keys chained after
     # the account's current last flow (same idiom as _line_sort_keys).
     sort_key = await next_sort_key(session, Flow, Flow.account_id == account.id)
@@ -298,6 +328,7 @@ async def create_flow(
     session: AsyncSession = Depends(get_session),
 ) -> FlowRead:
     await _validate_category(session, account.id, payload.category_id)
+    await _validate_ledger_accounts(session, account.id, payload.lines)
     _validate_visa(account, payload.payment_method)
     sort_key = await next_sort_key(session, Flow, Flow.account_id == account.id)
     flow = Flow(
@@ -327,6 +358,7 @@ async def update_flow(
     session: AsyncSession = Depends(get_session),
 ) -> FlowRead:
     await _validate_category(session, flow.account_id, payload.category_id)
+    await _validate_ledger_accounts(session, flow.account_id, payload.lines)
     _validate_visa(account, payload.payment_method)
     flow.name = payload.name
     flow.kind = payload.kind

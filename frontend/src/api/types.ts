@@ -67,11 +67,34 @@ export interface CategoryUpdate {
   vat_deduction_rate?: string
 }
 
+export interface LedgerAccountRead {
+  id: number
+  account_id: number
+  code: string
+  name: string
+  // Belgian PCMN class, always the code's first digit. Derived server-side;
+  // never sent when creating or updating.
+  pcmn_class: number
+}
+
+export interface LedgerAccountCreate {
+  code: string
+  name: string
+}
+
+export interface LedgerAccountUpdate {
+  code?: string
+  name?: string
+}
+
 export interface FlowLineCreate {
   description?: string | null
   // Net base (excl. VAT), unsigned.
   amount_net: string
   vat_rate?: string
+  // null means unbooked. Must reference a ledger account of the same account
+  // as the flow; the API rejects anything else with a 400.
+  ledger_account_id?: number | null
 }
 
 export interface FlowLineRead {
@@ -80,6 +103,7 @@ export interface FlowLineRead {
   amount_net: string
   vat_rate: string
   sort_key: string
+  ledger_account_id: number | null
 }
 
 export interface FlowCreate {
@@ -237,4 +261,46 @@ export interface AccountVat {
   vat_applicable: boolean
   total_net_due: string
   quarters: VatQuarter[]
+}
+
+// --- Annual accounts ---------------------------------------------------------
+
+export interface LedgerAccountTotals {
+  id: number
+  code: string
+  name: string
+  // Signed: revenue positive, expense negative. A class-6 account therefore
+  // holds a negative total.
+  current: string
+  prior: string
+  delta: string
+}
+
+export interface LedgerClassTotals {
+  pcmn_class: number
+  label: string
+  accounts: LedgerAccountTotals[]
+  current_total: string
+  prior_total: string
+  delta: string
+}
+
+export interface UnassignedTotals {
+  current: string
+  prior: string
+  delta: string
+  line_count: number
+}
+
+export interface PeriodTotals {
+  current: string
+  prior: string
+  delta: string
+}
+
+export interface AnnualAccounts {
+  year: number
+  classes: LedgerClassTotals[]
+  unassigned: UnassignedTotals
+  result: PeriodTotals
 }

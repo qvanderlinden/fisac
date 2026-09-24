@@ -4,6 +4,7 @@ import type {
   AccountRead,
   AccountVat,
   AccountUpdate,
+  AnnualAccounts,
   CategoryCreate,
   CategoryRead,
   CategoryUpdate,
@@ -14,6 +15,9 @@ import type {
   FlowKind,
   FlowRead,
   FlowUpdate,
+  LedgerAccountCreate,
+  LedgerAccountRead,
+  LedgerAccountUpdate,
   MoveRequest,
 } from './types'
 
@@ -91,6 +95,39 @@ export function moveCategory(
 
 export function deleteCategory(accountId: number, categoryId: number): Promise<void> {
   return request(`/accounts/${accountId}/categories/${categoryId}`, { method: 'DELETE' })
+}
+
+// --- Ledger accounts --------------------------------------------------------
+
+export function listLedgerAccounts(accountId: number): Promise<LedgerAccountRead[]> {
+  return request(`/accounts/${accountId}/ledger-accounts`)
+}
+
+export function createLedgerAccount(
+  accountId: number,
+  payload: LedgerAccountCreate,
+): Promise<LedgerAccountRead> {
+  return request(`/accounts/${accountId}/ledger-accounts`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateLedgerAccount(
+  accountId: number,
+  ledgerAccountId: number,
+  payload: LedgerAccountUpdate,
+): Promise<LedgerAccountRead> {
+  return request(`/accounts/${accountId}/ledger-accounts/${ledgerAccountId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteLedgerAccount(accountId: number, ledgerAccountId: number): Promise<void> {
+  return request(`/accounts/${accountId}/ledger-accounts/${ledgerAccountId}`, {
+    method: 'DELETE',
+  })
 }
 
 // --- Flows ------------------------------------------------------------------
@@ -198,4 +235,11 @@ export function fetchProjection(accountId: number, toDate?: string): Promise<Acc
 export function fetchVat(accountId: number, year?: number): Promise<AccountVat> {
   const params = year != null ? `?${new URLSearchParams({ year: String(year) })}` : ''
   return request(`/accounts/${accountId}/vat${params}`)
+}
+
+// --- Annual accounts --------------------------------------------------------
+
+export function fetchAnnualAccounts(accountId: number, year?: number): Promise<AnnualAccounts> {
+  const query = year === undefined ? '' : `?year=${year}`
+  return request(`/accounts/${accountId}/annual-accounts${query}`)
 }

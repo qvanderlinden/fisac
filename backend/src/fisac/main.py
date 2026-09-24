@@ -3,13 +3,15 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from fisac.routers import accounts, categories, flows, projection, vat
+from fisac.routers import accounts, annual_accounts, categories, flows, ledger_accounts, projection, vat
 
 app = FastAPI(title="fisac")
 
 app.include_router(accounts.router)
+app.include_router(annual_accounts.router)
 app.include_router(categories.router)
 app.include_router(flows.router)
+app.include_router(ledger_accounts.router)
 app.include_router(projection.router)
 app.include_router(vat.router)
 

@@ -7,6 +7,7 @@ import {
   deleteFlow,
   listCategories,
   listFlows,
+  listLedgerAccounts,
   setFlowPaid,
   updateFlow,
 } from '../api/client'
@@ -17,6 +18,7 @@ import type {
   FlowCreate,
   FlowKind,
   FlowRead,
+  LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
 import { FLOW_KIND_LABELS, PAYMENT_METHOD_LABELS } from '../accountingDisplay'
@@ -25,6 +27,7 @@ import { FlowBulkEditDialog } from './FlowBulkEditDialog'
 import { FlowRow } from './FlowRow'
 import { NewFlowRow } from './NewFlowRow'
 import { PAYMENT_METHODS } from './FlowForm'
+import { linesToDrafts, linesToPayload } from './LinesEditor'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover } from '@/components/ui/popover'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -56,6 +59,13 @@ const NO_FILTERS: FilterState = { category: 'any', method: 'any', paid: 'any' }
 
 // A FlowRead reduced to the editable FlowCreate payload the update endpoint
 // wants (full-replace semantics), so a single changed field can be merged on top.
+//
+// Lines are round-tripped through the same LinesEditor draft <-> payload pair
+// every editor uses (linesToDrafts / linesToPayload), rather than a hand-rolled
+// field list here. A hand-rolled list previously omitted ledger_account_id,
+// which meant every inline edit in this table (rename, dates, category,
+// payment method, paid, reverse-charge) silently unbooked every line on the
+// flow, since PATCH has full-replace semantics on the line set.
 function flowToPayload(flow: FlowRead): FlowCreate {
   return {
     name: flow.name,
@@ -66,11 +76,7 @@ function flowToPayload(flow: FlowRead): FlowCreate {
     payment_method: flow.payment_method,
     paid: flow.paid,
     reverse_charge: flow.reverse_charge,
-    lines: flow.lines.map((l) => ({
-      description: l.description,
-      amount_net: l.amount_net,
-      vat_rate: l.vat_rate,
-    })),
+    lines: linesToPayload(linesToDrafts(flow.lines)),
   }
 }
 
@@ -83,6 +89,7 @@ interface FlowListProps {
 export function FlowList({ account, kind }: FlowListProps) {
   const [flows, setFlows] = useState<FlowRead[]>([])
   const [categories, setCategories] = useState<CategoryRead[]>([])
+  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountRead[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [search, setSearch] = useState('')
@@ -100,12 +107,14 @@ export function FlowList({ account, kind }: FlowListProps) {
   async function refresh() {
     setLoading(true)
     try {
-      const [fetchedFlows, fetchedCategories] = await Promise.all([
+      const [fetchedFlows, fetchedCategories, fetchedLedgerAccounts] = await Promise.all([
         listFlows(account.id, kind),
         listCategories(account.id),
+        listLedgerAccounts(account.id),
       ])
       setFlows(fetchedFlows)
       setCategories(fetchedCategories)
+      setLedgerAccounts(fetchedLedgerAccounts)
     } finally {
       setLoading(false)
     }
@@ -531,6 +540,7 @@ export function FlowList({ account, kind }: FlowListProps) {
                     kind={kind}
                     account={account}
                     categories={categories}
+                    ledgerAccounts={ledgerAccounts}
                     colSpan={columnCount}
                     showReverseCharge={showReverseCharge}
                     selected={selected.has(flow.id)}
@@ -581,6 +591,7 @@ export function FlowList({ account, kind }: FlowListProps) {
           kind={kind}
           account={account}
           categories={categories}
+          ledgerAccounts={ledgerAccounts}
           onClose={() => setGenerating(false)}
           onInserted={async () => {
             setGenerating(false)

@@ -5,11 +5,19 @@ import {
   fetchProjection,
   getFlow,
   listCategories,
+  listLedgerAccounts,
   setFlowPaid,
   updateAccount,
   updateFlow,
 } from '../api/client'
-import type { AccountProjection, AccountRead, CategoryRead, FlowRead, ProjectionFlow } from '../api/types'
+import type {
+  AccountProjection,
+  AccountRead,
+  CategoryRead,
+  FlowRead,
+  LedgerAccountRead,
+  ProjectionFlow,
+} from '../api/types'
 import {
   PAYMENT_METHOD_ICONS,
   addMonthsFrom,
@@ -39,6 +47,7 @@ interface ProjectionViewProps {
 export function ProjectionView({ account, onAccountChange }: ProjectionViewProps) {
   const [projection, setProjection] = useState<AccountProjection | null>(null)
   const [categories, setCategories] = useState<CategoryRead[]>([])
+  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountRead[]>([])
   const [windowMonths, setWindowMonths] = useState(3)
   const [editingFlow, setEditingFlow] = useState<FlowRead | null>(null)
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null)
@@ -49,12 +58,14 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
 
   async function refresh() {
     const toDate = addMonthsFrom(todayDateInputValue(), windowMonths)
-    const [fetched, fetchedCategories] = await Promise.all([
+    const [fetched, fetchedCategories, fetchedLedgerAccounts] = await Promise.all([
       fetchProjection(account.id, toDate),
       listCategories(account.id),
+      listLedgerAccounts(account.id),
     ])
     setProjection(fetched)
     setCategories(fetchedCategories)
+    setLedgerAccounts(fetchedLedgerAccounts)
   }
 
   useEffect(() => {
@@ -277,6 +288,7 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
               kind={editingFlow.kind}
               account={account}
               categories={categories}
+              ledgerAccounts={ledgerAccounts}
               initialFlow={editingFlow}
               onCancel={() => setEditingFlow(null)}
               onSubmit={async (payload) => {

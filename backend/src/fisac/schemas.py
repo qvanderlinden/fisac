@@ -84,6 +84,36 @@ class CategoryRead(BaseModel):
     sort_key: str
 
 
+# --- Ledger accounts --------------------------------------------------------
+
+# Digits only, first digit a real PCMN class. Validating the shape here turns a
+# bad code into a 422 instead of letting it reach the database's
+# ck_ledger_accounts_code_digits / ck_ledger_accounts_class_range as a 500.
+_LEDGER_CODE = r"^[1-7][0-9]*$"
+
+
+class LedgerAccountCreate(BaseModel):
+    code: str = Field(pattern=_LEDGER_CODE, max_length=20)
+    name: str = Field(min_length=1, max_length=200)
+
+
+class LedgerAccountUpdate(BaseModel):
+    code: str | None = Field(default=None, pattern=_LEDGER_CODE, max_length=20)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class LedgerAccountRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    account_id: int
+    code: str
+    name: str
+    # Derived by the router from code[0], never sent by the client - the
+    # ck_ledger_accounts_class_matches_code constraint requires them to agree.
+    pcmn_class: int
+
+
 # --- Flow lines -------------------------------------------------------------
 
 
@@ -92,6 +122,10 @@ class FlowLineCreate(BaseModel):
     # Net base (excl. VAT), unsigned - the flow's kind supplies the sign.
     amount_net: Decimal = Field(ge=0)
     vat_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    # Which ledger account this line books to; null means unbooked. Validated
+    # against the flow's Account in routers/flows.py - the database cannot
+    # check it, since the FK only points at ledger_accounts.id.
+    ledger_account_id: int | None = None
 
 
 class FlowLineRead(BaseModel):
@@ -102,6 +136,7 @@ class FlowLineRead(BaseModel):
     amount_net: Decimal
     vat_rate: Decimal
     sort_key: str
+    ledger_account_id: int | None
 
 
 # --- Flows ------------------------------------------------------------------
@@ -299,3 +334,46 @@ class AccountVat(BaseModel):
     vat_applicable: bool
     total_net_due: Decimal
     quarters: list[VatQuarter]
+
+
+# --- Annual accounts --------------------------------------------------------
+
+
+class LedgerAccountTotals(BaseModel):
+    id: int
+    code: str
+    name: str
+    current: Decimal
+    prior: Decimal
+    delta: Decimal
+
+
+class LedgerClassTotals(BaseModel):
+    pcmn_class: int
+    label: str
+    accounts: list[LedgerAccountTotals]
+    current_total: Decimal
+    prior_total: Decimal
+    delta: Decimal
+
+
+class UnassignedTotals(BaseModel):
+    current: Decimal
+    prior: Decimal
+    delta: Decimal
+    # Unbooked lines in the displayed year only - what is left to do now, not a
+    # historical count.
+    line_count: int
+
+
+class PeriodTotals(BaseModel):
+    current: Decimal
+    prior: Decimal
+    delta: Decimal
+
+
+class AnnualAccounts(BaseModel):
+    year: int
+    classes: list[LedgerClassTotals]
+    unassigned: UnassignedTotals
+    result: PeriodTotals

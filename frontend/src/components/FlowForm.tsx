@@ -5,6 +5,7 @@ import type {
   FlowCreate,
   FlowKind,
   FlowRead,
+  LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
 import {
@@ -15,12 +16,13 @@ import {
   todayDateInputValue,
   visaPaymentDate,
 } from '../accountingDisplay'
-import { LinesEditor, emptyLine, linesToPayload, netToGross, type LineDraft } from './LinesEditor'
+import { LinesEditor, linesToDrafts, linesToPayload, type LineDraft } from './LinesEditor'
 
 interface FlowFormProps {
   kind: FlowKind
   account: AccountRead
   categories: CategoryRead[]
+  ledgerAccounts: LedgerAccountRead[]
   initialFlow?: FlowRead
   onSubmit: (payload: FlowCreate) => Promise<void>
   onCancel: () => void
@@ -34,23 +36,19 @@ interface FlowFormProps {
 
 export const PAYMENT_METHODS: PaymentMethod[] = ['direct_debit', 'bank_transfer', 'visa']
 
+// Delegates to the canonical LinesEditor draft conversion rather than
+// hand-rolling the same field list here - see flowToPayload in FlowList.tsx
+// for why an independent mapping is a liability (it silently dropped
+// ledger_account_id there).
 function toLineDraft(flow: FlowRead | undefined): LineDraft[] {
-  if (!flow || flow.lines.length === 0) {
-    return [emptyLine()]
-  }
-  return flow.lines.map((l) => ({
-    description: l.description ?? '',
-    amount_net: l.amount_net,
-    amount_gross: netToGross(l.amount_net, l.vat_rate),
-    basis: 'net' as const,
-    vat_rate: l.vat_rate,
-  }))
+  return linesToDrafts(flow?.lines ?? [])
 }
 
 export function FlowForm({
   kind,
   account,
   categories,
+  ledgerAccounts,
   initialFlow,
   onSubmit,
   onCancel,
@@ -191,7 +189,7 @@ export function FlowForm({
         )
       )}
 
-      <LinesEditor lines={lines} onChange={setLines} />
+      <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
 
       <label className="field field-row">
         <span>Paid</span>

@@ -114,6 +114,59 @@ class Category(Base):
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
 
 
+class LedgerAccount(Base):
+    """A general ledger account - one entry of the chart of accounts.
+
+    Named LedgerAccount, not Account: Account is already this codebase's
+    bank-account/entity concept (is_company, vat_applicable, Visa days).
+    """
+
+    __tablename__ = "ledger_accounts"
+    __table_args__ = (
+        # The chart's natural order is the code, so there is no sort_key and no
+        # /move endpoint here - unlike every other table. Listing is ORDER BY
+        # code, which is self-maintaining. This unique constraint's implicit
+        # index already serves both the ordering and the per-Account lookup
+        # (WHERE account_id = ? ORDER BY code), so no separate index is added.
+        UniqueConstraint("account_id", "code", name="uq_ledger_accounts_account_code"),
+        CheckConstraint("code ~ '^[0-9]+$'", name="ck_ledger_accounts_code_digits"),
+        # pcmn_class is a denormalization of the code's first digit, kept so
+        # reports can filter and group without parsing the code. These two
+        # checks keep it from drifting and confine codes to the real PCMN
+        # classes - together they reject a code starting with 0, 8 or 9. The
+        # comparison is textual (no SMALLINT cast) so a code whose first
+        # character isn't a digit - e.g. 'A1' - fails as a CheckViolation
+        # (23514), same as any other check here, instead of raising a
+        # DataError (22P02) from a failed cast. Postgres evaluates check
+        # constraints in name order, and this one sorts before
+        # ck_ledger_accounts_code_digits, so the cast previously ran first.
+        CheckConstraint(
+            "pcmn_class::text = left(code, 1)",
+            name="ck_ledger_accounts_class_matches_code",
+        ),
+        CheckConstraint(
+            "pcmn_class >= 1 AND pcmn_class <= 7",
+            name="ck_ledger_accounts_class_range",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # The chart is per Account, mirroring Category - a company Account and a
+    # personal Account do not share one.
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    # PCMN code, digits only, hierarchical by prefix: 61 > 610 > 6100.
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Belgian PCMN class, always the code's first digit: 1 equity/long-term
+    # debt, 2 fixed assets, 3 inventory, 4 receivables/payables, 5 cash,
+    # 6 charges, 7 produits. Only 6 and 7 are meaningful for flow lines today
+    # (class/kind validation is deliberately not enforced, so nothing stops a
+    # line from booking to 1-5); 1-5 are definable so the chart is complete.
+    pcmn_class: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
 class Flow(Base):
     __tablename__ = "flows"
     __table_args__ = (
@@ -133,6 +186,7 @@ class Flow(Base):
             "payment_method != 'VISA' OR payment_date IS NULL",
             name="ck_flows_no_visa_payment_date",
         ),
+        CheckConstraint("ratio >= 0 AND ratio <= 1", name="ck_flows_ratio_range"),
         Index("ix_flows_account_payment_date", "account_id", "payment_date"),
         Index("ix_flows_account_sort_key", "account_id", "sort_key"),
     )
@@ -174,6 +228,17 @@ class Flow(Base):
         Boolean, nullable=False, server_default="false"
     )
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
+    # Share (0-1) of this flow recognised in its invoice year; 1 for the normal
+    # case. A service whose coverage runs past the fiscal year end - an annual
+    # car insurance with a May anniversary - carries the share falling inside
+    # the invoice's year, so a May 2026 invoice covering May 2026 to April 2027
+    # is 0.66667. It sits on the flow rather than the line because the coverage
+    # period is a property of the invoice, so every line is scaled alike.
+    # A single scalar is only ever correct for one fiscal year: the remainder
+    # is dropped, not deferred. See the spec's "flows.ratio" section.
+    ratio: Mapped[Decimal] = mapped_column(
+        Numeric(6, 5), nullable=False, server_default="1"
+    )
 
 
 class FlowLine(Base):
@@ -192,3 +257,13 @@ class FlowLine(Base):
     # VAT rate as a percentage, e.g. 21 for 21%.
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, server_default="0")
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
+    # Which ledger account this line books to. Booking is per line, not per
+    # flow: Flow carries no amount, so only the line level can split one
+    # invoice across ledger accounts. Nullable so lines can be booked
+    # gradually and existing rows migrate with no backfill; the annual
+    # accounts report buckets unbooked lines explicitly rather than dropping
+    # them. SET NULL mirrors Flow.category_id - deleting a ledger account
+    # unbooks its lines instead of destroying them.
+    ledger_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ledger_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
