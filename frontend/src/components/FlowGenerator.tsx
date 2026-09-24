@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { createFlowsBulk, generateFlows } from '../api/client'
-import type { AccountRead, CategoryRead, FlowCreate, FlowKind, FlowRead, PaymentMethod } from '../api/types'
+import type {
+  AccountRead,
+  CategoryRead,
+  FlowCreate,
+  FlowKind,
+  FlowRead,
+  LedgerAccountRead,
+  PaymentMethod,
+} from '../api/types'
 import {
   FLOW_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -17,6 +25,7 @@ interface FlowGeneratorProps {
   kind: FlowKind
   account: AccountRead
   categories: CategoryRead[]
+  ledgerAccounts: LedgerAccountRead[]
   onClose: () => void
   // Called after a successful bulk insert so the parent list can refresh.
   onInserted: () => Promise<void>
@@ -46,6 +55,7 @@ function proposalToFlowRead(proposal: FlowCreate, accountId: number): FlowRead {
       amount_net: l.amount_net,
       vat_rate: l.vat_rate ?? '0',
       sort_key: String(i),
+      ledger_account_id: l.ledger_account_id ?? null,
     })),
     amount_net: totals.net.toFixed(2),
     amount_vat: totals.vat.toFixed(2),
@@ -53,7 +63,14 @@ function proposalToFlowRead(proposal: FlowCreate, accountId: number): FlowRead {
   }
 }
 
-export function FlowGenerator({ kind, account, categories, onClose, onInserted }: FlowGeneratorProps) {
+export function FlowGenerator({
+  kind,
+  account,
+  categories,
+  ledgerAccounts,
+  onClose,
+  onInserted,
+}: FlowGeneratorProps) {
   const [step, setStep] = useState<Step>('describe')
   const [description, setDescription] = useState('')
   // Template fields, entered once and applied to every generated occurrence.
@@ -160,7 +177,7 @@ export function FlowGenerator({ kind, account, categories, onClose, onInserted }
               </select>
             </label>
 
-            <LinesEditor lines={lines} onChange={setLines} />
+            <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
 
             {error && <p className="form-error">{error}</p>}
 
@@ -269,6 +286,7 @@ export function FlowGenerator({ kind, account, categories, onClose, onInserted }
                 kind={proposals[editingIndex].kind}
                 account={account}
                 categories={categories}
+                ledgerAccounts={ledgerAccounts}
                 initialFlow={proposalToFlowRead(proposals[editingIndex], account.id)}
                 onCancel={() => setEditingIndex(null)}
                 // Writes back into the local proposals array - nothing touches

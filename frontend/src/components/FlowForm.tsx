@@ -5,6 +5,7 @@ import type {
   FlowCreate,
   FlowKind,
   FlowRead,
+  LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
 import {
@@ -21,6 +22,7 @@ interface FlowFormProps {
   kind: FlowKind
   account: AccountRead
   categories: CategoryRead[]
+  ledgerAccounts: LedgerAccountRead[]
   initialFlow?: FlowRead
   onSubmit: (payload: FlowCreate) => Promise<void>
   onCancel: () => void
@@ -44,6 +46,7 @@ function toLineDraft(flow: FlowRead | undefined): LineDraft[] {
     amount_gross: netToGross(l.amount_net, l.vat_rate),
     basis: 'net' as const,
     vat_rate: l.vat_rate,
+    ledger_account_id: l.ledger_account_id === null ? '' : String(l.ledger_account_id),
   }))
 }
 
@@ -51,6 +54,7 @@ export function FlowForm({
   kind,
   account,
   categories,
+  ledgerAccounts,
   initialFlow,
   onSubmit,
   onCancel,
@@ -191,7 +195,7 @@ export function FlowForm({
         )
       )}
 
-      <LinesEditor lines={lines} onChange={setLines} />
+      <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
 
       <label className="field field-row">
         <span>Paid</span>

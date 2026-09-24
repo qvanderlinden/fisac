@@ -92,6 +92,9 @@ export interface FlowLineCreate {
   // Net base (excl. VAT), unsigned.
   amount_net: string
   vat_rate?: string
+  // null means unbooked. Must reference a ledger account of the same account
+  // as the flow; the API rejects anything else with a 400.
+  ledger_account_id?: number | null
 }
 
 export interface FlowLineRead {
@@ -100,6 +103,7 @@ export interface FlowLineRead {
   amount_net: string
   vat_rate: string
   sort_key: string
+  ledger_account_id: number | null
 }
 
 export interface FlowCreate {

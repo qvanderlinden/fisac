@@ -1827,3 +1827,8 @@ h4 {
   font-size: 0.8em;
   opacity: 0.7;
 }
+
+.line-ledger {
+  min-width: 12rem;
+  max-width: 16rem;
+}

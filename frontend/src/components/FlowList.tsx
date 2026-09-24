@@ -7,6 +7,7 @@ import {
   deleteFlow,
   listCategories,
   listFlows,
+  listLedgerAccounts,
   setFlowPaid,
   updateFlow,
 } from '../api/client'
@@ -17,6 +18,7 @@ import type {
   FlowCreate,
   FlowKind,
   FlowRead,
+  LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
 import { FLOW_KIND_LABELS, PAYMENT_METHOD_LABELS } from '../accountingDisplay'
@@ -83,6 +85,7 @@ interface FlowListProps {
 export function FlowList({ account, kind }: FlowListProps) {
   const [flows, setFlows] = useState<FlowRead[]>([])
   const [categories, setCategories] = useState<CategoryRead[]>([])
+  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountRead[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [search, setSearch] = useState('')
@@ -100,12 +103,14 @@ export function FlowList({ account, kind }: FlowListProps) {
   async function refresh() {
     setLoading(true)
     try {
-      const [fetchedFlows, fetchedCategories] = await Promise.all([
+      const [fetchedFlows, fetchedCategories, fetchedLedgerAccounts] = await Promise.all([
         listFlows(account.id, kind),
         listCategories(account.id),
+        listLedgerAccounts(account.id),
       ])
       setFlows(fetchedFlows)
       setCategories(fetchedCategories)
+      setLedgerAccounts(fetchedLedgerAccounts)
     } finally {
       setLoading(false)
     }
@@ -531,6 +536,7 @@ export function FlowList({ account, kind }: FlowListProps) {
                     kind={kind}
                     account={account}
                     categories={categories}
+                    ledgerAccounts={ledgerAccounts}
                     colSpan={columnCount}
                     showReverseCharge={showReverseCharge}
                     selected={selected.has(flow.id)}
@@ -581,6 +587,7 @@ export function FlowList({ account, kind }: FlowListProps) {
           kind={kind}
           account={account}
           categories={categories}
+          ledgerAccounts={ledgerAccounts}
           onClose={() => setGenerating(false)}
           onInserted={async () => {
             setGenerating(false)

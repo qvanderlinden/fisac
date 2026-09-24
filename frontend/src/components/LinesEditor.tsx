@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { FlowLineCreate, FlowLineRead } from '../api/types'
+import type { FlowLineCreate, FlowLineRead, LedgerAccountRead } from '../api/types'
 
 export interface LineDraft {
   description: string
@@ -10,10 +10,12 @@ export interface LineDraft {
   amount_gross: string
   basis: 'net' | 'gross'
   vat_rate: string
+  // '' means unbooked; the select's blank option. Converted to null on submit.
+  ledger_account_id: string
 }
 
 export function emptyLine(): LineDraft {
-  return { description: '', amount_net: '', amount_gross: '', basis: 'net', vat_rate: '21' }
+  return { description: '', amount_net: '', amount_gross: '', basis: 'net', vat_rate: '21', ledger_account_id: '' }
 }
 
 function round2(n: number): number {
@@ -66,6 +68,7 @@ export function linesToDrafts(lines: FlowLineRead[]): LineDraft[] {
     amount_gross: netToGross(l.amount_net, l.vat_rate),
     basis: 'net' as const,
     vat_rate: l.vat_rate,
+    ledger_account_id: l.ledger_account_id === null ? '' : String(l.ledger_account_id),
   }))
 }
 
@@ -78,15 +81,19 @@ export function linesToPayload(lines: LineDraft[]): FlowLineCreate[] {
       description: l.description.trim() || null,
       amount_net: l.amount_net,
       vat_rate: l.vat_rate.trim() === '' ? '0' : l.vat_rate,
+      ledger_account_id: l.ledger_account_id === '' ? null : Number(l.ledger_account_id),
     }))
 }
 
 interface LinesEditorProps {
   lines: LineDraft[]
   onChange: (lines: LineDraft[]) => void
+  // The account's chart, fetched once by FlowList and drilled down exactly as
+  // `categories` already is.
+  ledgerAccounts: LedgerAccountRead[]
 }
 
-export function LinesEditor({ lines, onChange }: LinesEditorProps) {
+export function LinesEditor({ lines, onChange, ledgerAccounts }: LinesEditorProps) {
   const totals = useMemo(() => linesTotals(lines), [lines])
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
@@ -162,6 +169,19 @@ export function LinesEditor({ lines, onChange }: LinesEditorProps) {
             />
             gross
           </span>
+          <select
+            className="line-ledger"
+            value={line.ledger_account_id}
+            onChange={(e) => updateLine(i, { ledger_account_id: e.target.value })}
+            aria-label="Ledger account"
+          >
+            <option value="">— no ledger account —</option>
+            {ledgerAccounts.map((la) => (
+              <option key={la.id} value={String(la.id)}>
+                {la.code} — {la.name}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="line-remove"

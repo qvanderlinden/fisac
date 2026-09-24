@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import type { AccountRead, CategoryRead, FlowCreate, FlowKind, FlowRead, PaymentMethod } from '../api/types'
+import type {
+  AccountRead,
+  CategoryRead,
+  FlowCreate,
+  FlowKind,
+  FlowRead,
+  LedgerAccountRead,
+  PaymentMethod,
+} from '../api/types'
 import { PAYMENT_METHOD_LABELS, amountClass, formatDate, formatFlowAmount, visaPaymentDate } from '../accountingDisplay'
 import { PAYMENT_METHODS } from './FlowForm'
 import { LinesEditor, linesToDrafts, linesToPayload, type LineDraft } from './LinesEditor'
@@ -13,6 +21,7 @@ interface FlowRowProps {
   kind: FlowKind
   account: AccountRead
   categories: CategoryRead[]
+  ledgerAccounts: LedgerAccountRead[]
   colSpan: number
   // Whether the reverse-charge (autoliquidation) checkbox column is shown.
   showReverseCharge: boolean
@@ -32,6 +41,7 @@ export function FlowRow({
   kind,
   account,
   categories,
+  ledgerAccounts,
   colSpan,
   showReverseCharge,
   selected,
@@ -258,7 +268,7 @@ export function FlowRow({
       {expanded && (
         <TableRow className="flow-expanded-row hover:bg-transparent">
           <TableCell colSpan={colSpan} className="flow-expanded-cell">
-            <LinesEditor lines={lines} onChange={setLines} />
+            <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
             <div className="flow-expanded-actions">
               <Button size="sm" onClick={saveLines} disabled={savingLines}>
                 {savingLines ? 'Saving…' : 'Save lines'}
