@@ -334,3 +334,46 @@ class AccountVat(BaseModel):
     vat_applicable: bool
     total_net_due: Decimal
     quarters: list[VatQuarter]
+
+
+# --- Annual accounts --------------------------------------------------------
+
+
+class LedgerAccountTotals(BaseModel):
+    id: int
+    code: str
+    name: str
+    current: Decimal
+    prior: Decimal
+    delta: Decimal
+
+
+class LedgerClassTotals(BaseModel):
+    pcmn_class: int
+    label: str
+    accounts: list[LedgerAccountTotals]
+    current_total: Decimal
+    prior_total: Decimal
+    delta: Decimal
+
+
+class UnassignedTotals(BaseModel):
+    current: Decimal
+    prior: Decimal
+    delta: Decimal
+    # Unbooked lines in the displayed year only - what is left to do now, not a
+    # historical count.
+    line_count: int
+
+
+class PeriodTotals(BaseModel):
+    current: Decimal
+    prior: Decimal
+    delta: Decimal
+
+
+class AnnualAccounts(BaseModel):
+    year: int
+    classes: list[LedgerClassTotals]
+    unassigned: UnassignedTotals
+    result: PeriodTotals
