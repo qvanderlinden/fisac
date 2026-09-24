@@ -31,8 +31,11 @@ def upgrade() -> None:
         sa.Column('name', sa.String(length=200), nullable=False),
         sa.Column('pcmn_class', sa.SmallInteger(), nullable=False),
         sa.CheckConstraint("code ~ '^[0-9]+$'", name='ck_ledger_accounts_code_digits'),
+        # Textual comparison (no SMALLINT cast) so a non-digit code fails as a
+        # CheckViolation (23514) instead of a DataError (22P02) from a failed
+        # cast - see models.py for why this ordering matters.
         sa.CheckConstraint(
-            'pcmn_class = CAST(LEFT(code, 1) AS SMALLINT)',
+            "pcmn_class::text = left(code, 1)",
             name='ck_ledger_accounts_class_matches_code',
         ),
         sa.CheckConstraint(
@@ -41,14 +44,10 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(['account_id'], ['fisac.accounts.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
+        # This unique constraint's implicit index also serves the chart's
+        # natural ORDER BY code within an Account - no separate index is
+        # created for that.
         sa.UniqueConstraint('account_id', 'code', name='uq_ledger_accounts_account_code'),
-        schema='fisac',
-    )
-    op.create_index(
-        'ix_ledger_accounts_account_code',
-        'ledger_accounts',
-        ['account_id', 'code'],
-        unique=False,
         schema='fisac',
     )
     # Booking is per line: Flow carries no amount, so only the line level can
@@ -107,7 +106,4 @@ def downgrade() -> None:
         schema='fisac',
     )
     op.drop_column('flow_lines', 'ledger_account_id', schema='fisac')
-    op.drop_index(
-        'ix_ledger_accounts_account_code', table_name='ledger_accounts', schema='fisac'
-    )
     op.drop_table('ledger_accounts', schema='fisac')

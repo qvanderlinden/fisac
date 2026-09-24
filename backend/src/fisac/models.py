@@ -123,25 +123,31 @@ class LedgerAccount(Base):
 
     __tablename__ = "ledger_accounts"
     __table_args__ = (
+        # The chart's natural order is the code, so there is no sort_key and no
+        # /move endpoint here - unlike every other table. Listing is ORDER BY
+        # code, which is self-maintaining. This unique constraint's implicit
+        # index already serves both the ordering and the per-Account lookup
+        # (WHERE account_id = ? ORDER BY code), so no separate index is added.
         UniqueConstraint("account_id", "code", name="uq_ledger_accounts_account_code"),
         CheckConstraint("code ~ '^[0-9]+$'", name="ck_ledger_accounts_code_digits"),
         # pcmn_class is a denormalization of the code's first digit, kept so
         # reports can filter and group without parsing the code. These two
         # checks keep it from drifting and confine codes to the real PCMN
-        # classes - together they reject a code starting with 0, 8 or 9.
+        # classes - together they reject a code starting with 0, 8 or 9. The
+        # comparison is textual (no SMALLINT cast) so a code whose first
+        # character isn't a digit - e.g. 'A1' - fails as a CheckViolation
+        # (23514), same as any other check here, instead of raising a
+        # DataError (22P02) from a failed cast. Postgres evaluates check
+        # constraints in name order, and this one sorts before
+        # ck_ledger_accounts_code_digits, so the cast previously ran first.
         CheckConstraint(
-            "pcmn_class = CAST(LEFT(code, 1) AS SMALLINT)",
+            "pcmn_class::text = left(code, 1)",
             name="ck_ledger_accounts_class_matches_code",
         ),
         CheckConstraint(
             "pcmn_class >= 1 AND pcmn_class <= 7",
             name="ck_ledger_accounts_class_range",
         ),
-        # The chart's natural order is the code, so there is no sort_key and no
-        # /move endpoint here - unlike every other table. Listing is ORDER BY
-        # code, which is self-maintaining. This composite index serves both the
-        # ordering and the per-Account lookup.
-        Index("ix_ledger_accounts_account_code", "account_id", "code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -155,8 +161,9 @@ class LedgerAccount(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     # Belgian PCMN class, always the code's first digit: 1 equity/long-term
     # debt, 2 fixed assets, 3 inventory, 4 receivables/payables, 5 cash,
-    # 6 charges, 7 produits. Only 6 and 7 are reachable from flow lines today;
-    # 1-5 are definable so the chart is complete.
+    # 6 charges, 7 produits. Only 6 and 7 are meaningful for flow lines today
+    # (class/kind validation is deliberately not enforced, so nothing stops a
+    # line from booking to 1-5); 1-5 are definable so the chart is complete.
     pcmn_class: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
 

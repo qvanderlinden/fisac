@@ -36,16 +36,28 @@ means the existing entity and "ledger account" means the new one.
 
 Constraints:
 
-- `uq_ledger_accounts_account_code` — UNIQUE (`account_id`, `code`)
+- `uq_ledger_accounts_account_code` — UNIQUE (`account_id`, `code`). Its
+  implicit index also serves the chart's natural `ORDER BY code` within an
+  Account, so no separate index is created for that (a prior draft had one,
+  `ix_ledger_accounts_account_code`; it duplicated this constraint's index
+  byte-for-byte and was removed).
 - `ck_ledger_accounts_code_digits` — `code ~ '^[0-9]+$'`
-- `ck_ledger_accounts_class_matches_code` —
-  `pcmn_class = CAST(LEFT(code, 1) AS SMALLINT)`
+- `ck_ledger_accounts_class_matches_code` — `pcmn_class::text = left(code, 1)`.
+  Deliberately a textual comparison, not `pcmn_class = CAST(LEFT(code, 1) AS
+  SMALLINT)`: Postgres evaluates check constraints in name order, and this one
+  sorts before `ck_ledger_accounts_code_digits`. With the cast, a code whose
+  first character isn't a digit (e.g. `'A1'`) fails the cast itself and raises
+  `DataError` (SQLSTATE 22P02) before `ck_ledger_accounts_code_digits` ever
+  runs, instead of the intended `CheckViolation` (23514). The textual form
+  can't fail to cast, so the digits check is what rejects it, with the error
+  identity a router can map to a 4xx.
 - `ck_ledger_accounts_class_range` — `pcmn_class >= 1 AND pcmn_class <= 7`
-- `ix_ledger_accounts_account_code` — INDEX (`account_id`, `code`)
 
 The range check and the class-matches-code check together mean a code may not
 begin with `0`, `8` or `9`: those digits are not PCMN classes. The digits-only
 check allows such a code on its own, so the range check is what rejects it.
+The two checks are kept separate rather than merged into one regex because
+their distinct error identities (which check fired) are useful.
 
 The chart is **per Account**, mirroring `categories`
 (`uq_categories_account_name`). Each Account owns its own chart; a company
@@ -53,9 +65,11 @@ Account and a personal Account do not share one.
 
 PCMN classes, for reference: 1 equity and long-term debt, 2 fixed assets,
 3 inventory, 4 receivables and payables, 5 cash, 6 charges, 7 produits. Only
-classes 6 and 7 are reachable from flow lines today. Classes 1–5 are
-definable so the chart is complete, but nothing links to them until fisac
-models more than flows.
+classes 6 and 7 are meaningful for flow lines today — nothing prevents a line
+from booking to a class 1–5 account, since class/kind validation is
+deliberately not enforced (see Validation below). Classes 1–5 are definable
+so the chart is complete, but nothing links to them until fisac models more
+than flows.
 
 `pcmn_class` is a deliberate denormalisation of `code[0]`, kept so reports can
 filter and group without parsing the code. The check constraint prevents the
@@ -120,12 +134,17 @@ control. Revisit before closing a year that inherits a straddling flow.
 
 ## Validation
 
-Enforced in the router, not the database:
+To be enforced in the router, not the database — **not yet implemented by
+this branch**:
 
 - **Same-Account** — a line's ledger account must belong to the same Account
   as the line's flow. A hard error, matching how `_get_category` scopes a
   category to its Account. Not expressible as a `CheckConstraint` because it
-  spans `flow_lines → flows → accounts`.
+  spans `flow_lines → flows → accounts`. Until the router that enforces this
+  lands, the database accepts a `flow_lines.ledger_account_id` pointing at a
+  ledger account owned by a *different* Account, which would leak one
+  Account's lines into another's annual accounts. Verified live (see the
+  plan's probe).
 
 Deliberately **not** enforced:
 
@@ -160,27 +179,78 @@ alongside the net. Both `vat_rate` and `vat_deduction_rate` are percentages
 `vat_deduction_rate` on the flow's category.
 
 A flow with `category_id IS NULL` uses `vat_deduction_rate = 0`, so the full
-gross is booked. This matches `routers/vat.py`, where an expense with no
-category recovers no VAT.
+gross is booked. On the expense side this matches `routers/vat.py:75-78` and
+following, where an expense with no category recovers no VAT — that file is
+genuine precedent there. It is **not** precedent on the revenue side: `vat.py`
+never reads a category's `vat_deduction_rate` for a revenue flow at all (see
+the Known defect below) — the NULL-category default of 0 for revenue is this
+formula's own choice, unsupported by any existing behaviour.
 
 **`factor` applies to revenue and expense lines alike.** This is what makes a
 refund net to zero: a 1 200,00 expense refunded as a revenue flow, on the same
 class-6 account with the same category, books `+1 326,00` against the original
 `-1 326,00`. Restricting the factor to expenses would strand the 126,00 of
-unrecoverable VAT.
+unrecoverable VAT. **This uniform treatment was raised as a concern during
+review and deliberately kept, twice, as an informed decision — see the Known
+defect below for its real consequence and why it was kept anyway. Do not
+"fix" the formula into a kind- or class-based condition; that decision is
+closed.**
 
-> **Invariant this depends on:** revenue categories must keep
-> `vat_deduction_rate = 100` (the column default). Nothing enforces it. A
-> revenue category set to 50 inflates genuine sales by half the VAT charged —
-> VAT that was collected and remitted, never kept. A considered alternative
-> keys the factor off the ledger account's `pcmn_class` (apply on class 6,
-> skip on class 7), which is correct for both refunds and sales without
-> relying on category hygiene. Not adopted; recorded here as the first thing
-> to change if revenue ever books wrong.
+> **Known defect (kept deliberately — do not silently fix).** `vat.py:75-78`
+> hardcodes `deduction_rate = 100` for every revenue flow — "the category rate
+> is input-only" — so nothing in this codebase today ever applies a category's
+> `vat_deduction_rate` to a revenue flow. This formula would be the first and
+> only consumer that does, and the database enforces nothing that keeps a
+> revenue category's rate at 100 (it is only the column default).
+>
+> `FlowForm.tsx:62-63,85` initialises a new flow's category select to `''`
+> and sends `category_id: null` — "no category" is the form's default state,
+> not a rare misconfiguration. With `category_id IS NULL` mapping to
+> `vat_deduction_rate = 0`, an ordinary sale entered without picking a
+> category — 1 200,00 net, 21% VAT — computes
+> `factor = 1 + 0.21 * (1 - 0) = 1.21` and books **+1 452,00** to a class-7
+> account. The 252,00 is VAT collected on the sale and owed to the state; it
+> is not income, and this is a defect, not an accepted trade-off — it
+> misstates revenue in the annual accounts for the single most common way a
+> revenue flow is entered.
+>
+> This was raised and the uniform factor was kept anyway, as a deliberate,
+> informed decision the user made twice after seeing this exact consequence.
+> A later reader should not unilaterally "fix" it. Two alternatives were
+> considered and rejected:
+> - **Key the factor off the ledger account's `pcmn_class`** (apply on class 6,
+>   skip on class 7) — correct for both the sales case and the refund-netting
+>   case, without relying on category hygiene.
+> - **Key the factor off the flow's `kind`** (mirror `vat.py`: no factor on
+>   revenue) — fixes the sales case, but strands the 126,00 of unrecoverable
+>   VAT on an expense recorded as a refund, breaking the netting this section
+>   otherwise relies on.
 
-**Rounding** is per line, to cents, `ROUND_HALF_UP` — the same rule as
-`_flow_vat` in `routers/vat.py`, `flows._line_vat` and `projection._gross`, so
-ledger totals reconcile with the figures those already report.
+**Interaction with the VAT report.** The refund pattern above is itself not
+free of consequences elsewhere: `vat.py:75-78` treats *any* revenue flow's VAT
+as output VAT fully owed, with no deduction. Recording a supplier refund as a
+revenue flow — as this section recommends for ledger netting — therefore adds
+252,00 of output VAT to the quarter's VAT return instead of reducing
+deductible input VAT for that quarter. This is a pre-existing `vat.py`
+limitation, not something this branch introduces, but this spec is what
+newly recommends the refund-as-revenue pattern, so the report's VAT total and
+the annual accounts' ledger total will disagree for any quarter containing
+such a refund. Recorded here so whoever builds the annual-accounts report
+does not discover the discrepancy by reconciling two reports that disagree.
+
+**`reverse_charge` needs no special case.** `vat.py:85-89` self-assesses
+output VAT on a reverse-charge expense and deducts it per the category, so the
+buyer's net cost is `net + vat * (1 - vat_deduction_rate/100)` — exactly what
+`factor` already computes. The formula above handles it correctly with no
+extra term; do not add one.
+
+**Rounding** is per line, to cents, `ROUND_HALF_UP` — it rounds the same way,
+per line, as `_flow_vat` in `routers/vat.py`. It is not the same computation,
+though: `_flow_vat` rounds `net * vat_rate / 100` per line and `vat.py:83`
+rounds the deduction again at flow level, while this formula rounds one fused
+product (`signed * factor * ratio`) once per line. The two compositions can
+differ by a cent on the same flow; do not assume the ledger total and the VAT
+report reconcile to the cent without checking the actual composition used.
 
 **`tax_deduction_rate` does not appear.** The *dépense non admise* is a tax
 adjustment computed outside the ledger, not a booking.

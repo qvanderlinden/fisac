@@ -61,7 +61,7 @@ Insert between the `Category` class and the `Flow` class. `__table_args__` comes
 
 `models.py` already imports every name this needs — `CheckConstraint`, `ForeignKey`, `Index`, `Integer`, `SmallInteger`, `String`, `UniqueConstraint`, `Mapped`, `mapped_column`. Add no imports.
 
-Note there is **one** index, the composite `(account_id, code)`. `account_id` does **not** get `index=True`: the composite index already serves `WHERE account_id = ?` on its leading column, so a second single-column index would be dead weight. This is a deliberate divergence from `Category`, which carries both only because autogenerate emitted them.
+Note there is **no** dedicated index: the `UniqueConstraint("account_id", "code", ...)` already creates its own implicit btree on `(account_id, code)`, which serves both `WHERE account_id = ?` and the chart's `ORDER BY code` within an Account. A separate `Index` on the same two columns in the same order would be a byte-for-byte duplicate of that implicit index — verified live — costing writes and storage for nothing. `account_id` also does **not** get `index=True` on its own, for the same reason. This is a deliberate divergence from `Category`, which carries a redundant single-column index only because autogenerate emitted it.
 
 ```python
 class LedgerAccount(Base):
@@ -73,25 +73,30 @@ class LedgerAccount(Base):
 
     __tablename__ = "ledger_accounts"
     __table_args__ = (
+        # The chart's natural order is the code, so there is no sort_key and no
+        # /move endpoint here - unlike every other table. Listing is ORDER BY
+        # code, which is self-maintaining. This unique constraint's implicit
+        # index already serves both the ordering and the per-Account lookup
+        # (WHERE account_id = ? ORDER BY code), so no separate index is added.
         UniqueConstraint("account_id", "code", name="uq_ledger_accounts_account_code"),
         CheckConstraint("code ~ '^[0-9]+$'", name="ck_ledger_accounts_code_digits"),
         # pcmn_class is a denormalization of the code's first digit, kept so
         # reports can filter and group without parsing the code. These two
         # checks keep it from drifting and confine codes to the real PCMN
-        # classes - together they reject a code starting with 0, 8 or 9.
+        # classes - together they reject a code starting with 0, 8 or 9. The
+        # comparison is textual (no SMALLINT cast) so a code whose first
+        # character isn't a digit fails as a CheckViolation (23514), same as
+        # any other check here, instead of a DataError (22P02) from a failed
+        # cast - Postgres evaluates checks in name order and this one sorts
+        # before ck_ledger_accounts_code_digits.
         CheckConstraint(
-            "pcmn_class = CAST(LEFT(code, 1) AS SMALLINT)",
+            "pcmn_class::text = left(code, 1)",
             name="ck_ledger_accounts_class_matches_code",
         ),
         CheckConstraint(
             "pcmn_class >= 1 AND pcmn_class <= 7",
             name="ck_ledger_accounts_class_range",
         ),
-        # The chart's natural order is the code, so there is no sort_key and no
-        # /move endpoint here - unlike every other table. Listing is ORDER BY
-        # code, which is self-maintaining. This composite index serves both the
-        # ordering and the per-Account lookup.
-        Index("ix_ledger_accounts_account_code", "account_id", "code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -105,8 +110,9 @@ class LedgerAccount(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     # Belgian PCMN class, always the code's first digit: 1 equity/long-term
     # debt, 2 fixed assets, 3 inventory, 4 receivables/payables, 5 cash,
-    # 6 charges, 7 produits. Only 6 and 7 are reachable from flow lines today;
-    # 1-5 are definable so the chart is complete.
+    # 6 charges, 7 produits. Only 6 and 7 are meaningful for flow lines today
+    # (class/kind validation is deliberately not enforced, so nothing stops a
+    # line from booking to 1-5); 1-5 are definable so the chart is complete.
     pcmn_class: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 ```
 
@@ -199,7 +205,7 @@ Expected, exactly:
 ```
 columns: ['account_id', 'code', 'id', 'name', 'pcmn_class']
 named constraints: ['ck_ledger_accounts_class_matches_code', 'ck_ledger_accounts_class_range', 'ck_ledger_accounts_code_digits', 'uq_ledger_accounts_account_code']
-indexes: ['ix_ledger_accounts_account_code']
+indexes: []
 flow_lines.ledger_account_id nullable: True
 flow_lines.ledger_account_id ondelete: ['SET NULL']
 flows.ratio type: NUMERIC(6, 5)
@@ -208,7 +214,7 @@ flows.ratio server_default: 1
 flows named constraints: ['ck_flows_no_method_no_payment_date', 'ck_flows_no_visa_payment_date', 'ck_flows_ratio_range']
 ```
 
-If `indexes` contains a second entry such as `ix_fisac_ledger_accounts_account_id`, `index=True` was left on `account_id` — remove it and re-run.
+If `indexes` is non-empty, e.g. `ix_ledger_accounts_account_code` or `ix_fisac_ledger_accounts_account_id`, a dedicated `Index` or `index=True` was left in — remove it and re-run; the unique constraint's implicit index is the only one this table should have.
 
 - [ ] **Step 6: Verify env.py registers the model**
 
@@ -235,7 +241,7 @@ Turns the model declarations into schema. One additive revision; no backfill, no
 
 **Files:**
 - Create: `backend/migrations/versions/0004_ledger_accounts.py`
-- Test: none in-repo. Verified by `alembic check` (proves the migration matches Task 1's models) plus a throwaway constraint probe, written to the scratchpad and not committed.
+- Test: none in-repo. Verified by direct catalog inspection of the three new/changed objects (`alembic check` is noise in this repo — see Step 4) plus a throwaway constraint probe, written to the scratchpad and not committed.
 
 **Interfaces:**
 - Consumes: `fisac.models.LedgerAccount`, `fisac.models.FlowLine.ledger_account_id` and `fisac.models.Flow.ratio` from Task 1.
@@ -279,8 +285,11 @@ def upgrade() -> None:
         sa.Column('name', sa.String(length=200), nullable=False),
         sa.Column('pcmn_class', sa.SmallInteger(), nullable=False),
         sa.CheckConstraint("code ~ '^[0-9]+$'", name='ck_ledger_accounts_code_digits'),
+        # Textual comparison (no SMALLINT cast) so a non-digit code fails as a
+        # CheckViolation (23514) instead of a DataError (22P02) from a failed
+        # cast - see models.py for why this ordering matters.
         sa.CheckConstraint(
-            'pcmn_class = CAST(LEFT(code, 1) AS SMALLINT)',
+            "pcmn_class::text = left(code, 1)",
             name='ck_ledger_accounts_class_matches_code',
         ),
         sa.CheckConstraint(
@@ -289,14 +298,10 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(['account_id'], ['fisac.accounts.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
+        # This unique constraint's implicit index also serves the chart's
+        # natural ORDER BY code within an Account - no separate index is
+        # created for that.
         sa.UniqueConstraint('account_id', 'code', name='uq_ledger_accounts_account_code'),
-        schema='fisac',
-    )
-    op.create_index(
-        'ix_ledger_accounts_account_code',
-        'ledger_accounts',
-        ['account_id', 'code'],
-        unique=False,
         schema='fisac',
     )
     # Booking is per line: Flow carries no amount, so only the line level can
@@ -355,9 +360,6 @@ def downgrade() -> None:
         schema='fisac',
     )
     op.drop_column('flow_lines', 'ledger_account_id', schema='fisac')
-    op.drop_index(
-        'ix_ledger_accounts_account_code', table_name='ledger_accounts', schema='fisac'
-    )
     op.drop_table('ledger_accounts', schema='fisac')
 ```
 
@@ -392,15 +394,17 @@ Expected: `Running upgrade 0003_visa_closing_day -> 0004_ledger_accounts`, no er
 
 - [ ] **Step 4: Prove the migration matches the models**
 
-This is the real test of Step 1 — `alembic check` diffs the live schema against `Base.metadata`.
+`alembic check` diffs the live schema against `Base.metadata`, but in this repo its output depends on which role runs it and is **not** a clean signal: run as the `fisac` role — which shares its name with the schema, so `search_path`'s `"$user"` entry makes `fisac` both the connecting role's default schema and a named schema — it reports 12 foreign-key false positives, 8 of them on tables migration `0001` created. Run as a differently-named role, those 12 vanish and 2 native-ENUM `modify_type` items remain on `flows.kind` and `flows.payment_method`, also from `0001`. Neither run reports anything about this branch's objects (`ledger_accounts`, `flow_lines.ledger_account_id`, `flows.ratio`), but neither run is clean either, so "no drift" is not a usable pass/fail signal here. Run it anyway as a sanity check, then verify what actually matters by direct catalog inspection of the three objects this migration touches:
 
 ```bash
-cd backend && uv run alembic check
+cd backend && uv run alembic check  # informational only - expect noise unrelated to this branch, see above
+
+docker exec fisac-dev-pg psql -U fisac -d fisac -c "\d fisac.ledger_accounts"
+docker exec fisac-dev-pg psql -U fisac -d fisac -c "\d fisac.flow_lines"
+docker exec fisac-dev-pg psql -U fisac -d fisac -c "\d fisac.flows"
 ```
 
-Expected, exactly: `No new upgrade operations detected.`
-
-Any other output means the migration and the Task 1 model disagree. Read the proposed operations: they name the exact column, index or constraint that differs. Fix the migration (not the model — the model is the spec), then `alembic downgrade -1 && alembic upgrade head` and re-run.
+Expected: `ledger_accounts` shows exactly `ledger_accounts_pkey`, `uq_ledger_accounts_account_code` (and no separate index on `(account_id, code)`), the three check constraints, and the `account_id` foreign key; `flow_lines` shows `ledger_account_id integer`, its index, and its `ON DELETE SET NULL` foreign key to `ledger_accounts`; `flows` shows `ratio numeric(6,5) NOT NULL DEFAULT 1` and `ck_flows_ratio_range`. Any difference from Task 1's model means the migration and the model disagree — fix the migration (not the model — the model is the spec), then `alembic downgrade -1 && alembic upgrade head` and re-run. The constraint probe in Step 5 is the other half of this proof: it exercises the constraints' actual behaviour, not just their presence.
 
 - [ ] **Step 5: Probe the constraints**
 
@@ -443,7 +447,26 @@ BEGIN
     VALUES (acct_id, '61A000', 'Alphanumerique', 6);
     RAISE EXCEPTION 'FAIL: non-digit code was accepted';
   EXCEPTION WHEN check_violation THEN
-    RAISE NOTICE 'PASS: non-digit code rejected';
+    RAISE NOTICE 'PASS: non-digit code rejected (embedded non-digit, first char is a digit)';
+  END;
+
+  -- Finding 5: '61A000' above has a DIGIT first character, so it was always
+  -- caught by ck_ledger_accounts_code_digits and never exercised the
+  -- class-matches-code check at all. The dangerous case is a code whose
+  -- FIRST character is not a digit: with the old CAST-based check
+  -- (pcmn_class = CAST(LEFT(code, 1) AS SMALLINT)), evaluated before the
+  -- digits check in name order, this raised DataError (22P02) - a cast
+  -- failure - instead of a CheckViolation (23514). The fix makes that check
+  -- textual instead, so no cast can fail.
+  BEGIN
+    INSERT INTO fisac.ledger_accounts (account_id, code, name, pcmn_class)
+    VALUES (acct_id, 'A1', 'Non-digit first char', 6);
+    RAISE EXCEPTION 'FAIL: code starting with a non-digit was accepted';
+  EXCEPTION
+    WHEN check_violation THEN
+      RAISE NOTICE 'PASS: code starting with a non-digit rejected as a check violation (23514), not a cast error';
+    WHEN invalid_text_representation THEN
+      RAISE EXCEPTION 'FAIL: code starting with a non-digit raised a DataError (22P02), not a check violation';
   END;
 
   BEGIN
@@ -480,6 +503,32 @@ BEGIN
   ELSE
     RAISE EXCEPTION 'FAIL: line did not survive with a NULL booking';
   END IF;
+
+  -- Finding 9: same-Account booking is validated nowhere yet - not in the
+  -- database (no CheckConstraint can span flow_lines -> flows -> accounts)
+  -- and not in a router, because no router exists after this plan. This
+  -- documents the gap as it actually stands today: the database currently
+  -- ALLOWS a line whose flow belongs to Account A to book to a ledger
+  -- account owned by Account B. This is expected to PASS (i.e. the insert
+  -- succeeds) until the future router adds the same-Account check the spec
+  -- requires - do not read a future "FAIL" here as this probe being wrong.
+  DECLARE
+    acct_b_id int;
+    la_b_id int;
+    flow_a_id int;
+  BEGIN
+    INSERT INTO fisac.accounts (name, sort_key) VALUES ('probe-b', 'zzzy') RETURNING id INTO acct_b_id;
+    INSERT INTO fisac.ledger_accounts (account_id, code, name, pcmn_class)
+    VALUES (acct_b_id, '610000', 'Fournitures B', 6) RETURNING id INTO la_b_id;
+
+    INSERT INTO fisac.flows (account_id, name, kind, invoice_date, paid, reverse_charge, sort_key)
+    VALUES (acct_id, 'probe flow A', 'EXPENSE', DATE '2026-01-16', false, false, 'a1')
+    RETURNING id INTO flow_a_id;
+
+    INSERT INTO fisac.flow_lines (flow_id, amount_net, vat_rate, sort_key, ledger_account_id)
+    VALUES (flow_a_id, 50.00, 21, 'a0', la_b_id);
+    RAISE NOTICE 'PASS (documents an unenforced gap, not a guarantee): a flow_lines row was allowed to book to a ledger account owned by a different Account';
+  END;
 END $$;
 ROLLBACK;
 SQL
@@ -487,7 +536,7 @@ SQL
 psql "$(grep '^DATABASE_URL=' .env | cut -d= -f2- | sed 's#postgresql+asyncpg://#postgresql://#')" -f /tmp/ledger_probe.sql
 ```
 
-Expected: eight `NOTICE:  PASS:` lines and `ROLLBACK`. Any `FAIL` is a real defect in the migration. The whole probe runs inside a transaction that is rolled back, so it leaves no rows behind.
+Expected: ten `NOTICE:  PASS:` lines and `ROLLBACK`. Eight assert something is rejected or behaves as designed; the last two (the non-digit-first-character code, and the cross-Account booking) are the two added for this fix wave — the first proves Finding 5's fix (a check violation, not a cast error), the second documents Finding 9's gap (the insert is currently *allowed*, which is the expected, if unenforced, result — not a bug in the probe). Any other `FAIL` is a real defect in the migration. The whole probe runs inside a transaction that is rolled back, so it leaves no rows behind.
 
 If `psql` is not installed, run the same SQL through Python instead:
 
@@ -514,10 +563,10 @@ PY
 - [ ] **Step 6: Round-trip the migration**
 
 ```bash
-cd backend && uv run alembic downgrade -1 && uv run alembic upgrade head && uv run alembic check
+cd backend && uv run alembic downgrade -1 && uv run alembic upgrade head
 ```
 
-Expected: the downgrade and upgrade both succeed, and `check` again prints `No new upgrade operations detected.` A downgrade failure usually means an index or constraint is dropped in the wrong order.
+Expected: the downgrade and upgrade both succeed with no error. A downgrade failure usually means an index or constraint is dropped in the wrong order. `alembic check` is not run again here — Step 4 already established it is noise for this repo regardless of this branch's changes; re-check the catalog inspection from Step 4 instead if anything about the round-trip looks suspicious.
 
 - [ ] **Step 7: Confirm nothing else changed**
 
@@ -538,11 +587,11 @@ git commit -m "feat: add ledger_accounts table, line booking column and flow rat
 
 ## Done when
 
-- `fisac.ledger_accounts` exists with all four named constraints and the composite index.
+- `fisac.ledger_accounts` exists with its three named check constraints and `uq_ledger_accounts_account_code` — verified by direct catalog inspection (`\d fisac.ledger_accounts`), not `alembic check`, which is noisy in this repo independent of this branch: run as the `fisac` role it reports 12 foreign-key false positives (8 from migration `0001`, an artifact of `fisac` being both the role's default schema and a named schema via `"$user"` in `search_path`); run as a differently-named role those vanish and 2 native-ENUM `modify_type` items on `flows.kind`/`flows.payment_method` remain, also from `0001`. Neither run says anything about this branch's objects.
+- No index duplicates `uq_ledger_accounts_account_code`'s implicit one.
 - `fisac.flow_lines.ledger_account_id` exists, nullable, `ON DELETE SET NULL`.
 - `fisac.flows.ratio` exists, NOT NULL, defaulting to 1, range-checked to 0..1.
-- `alembic check` reports no drift.
-- Every probe prints PASS.
+- Every probe prints PASS, including the non-digit-first-character-code case and the cross-Account-booking case.
 - Two commits on `feat/ledger-accounts`.
 
 ## Explicitly not in this plan
@@ -556,6 +605,25 @@ Each is separate work, in roughly this order:
    `round_half_up(amount_net * (kind == REVENUE ? +1 : -1) * (1 + (vat_rate/100) * (1 - vat_deduction_rate/100)) * flow.ratio, cents)`.
    Note `vat_rate` and `vat_deduction_rate` are percentages, that revenue is
    **positive** and expense negative, and that a NULL category means
-   `vat_deduction_rate = 0`. This plan stores `ratio` but computes nothing.
+   `vat_deduction_rate = 0` — on the expense side this matches `routers/vat.py`
+   (an expense with no category recovers no VAT); it is **not** precedent on
+   the revenue side, since `vat.py` hardcodes `deduction_rate = 100` for every
+   revenue flow and never reads a category's `vat_deduction_rate` there at
+   all. This is what produces the uniform factor's known defect: an ordinary
+   sale entered with no category (`FlowForm.tsx`'s default state) — 1 200,00
+   net, 21% VAT — books **+1 452,00** instead of +1 200,00, because the
+   252,00 of VAT collected and owed to the state gets counted as revenue.
+   This was raised during review and the uniform factor was kept anyway, as a
+   deliberate, informed decision made twice — **do not** "fix" it into a
+   kind- or class-based condition; see the spec's "Booking amount formula"
+   section for the full write-up, the rejected alternatives (key off
+   `pcmn_class`, or off flow `kind`), and the further interaction where
+   recording a supplier refund as a revenue flow (recommended for ledger
+   netting) adds output VAT to `vat.py`'s quarterly total instead of reducing
+   deductible input VAT. Also note `reverse_charge` needs no special case in
+   the formula, and that per-line `ROUND_HALF_UP` rounds the same way as
+   `_flow_vat` but is not the same composition, so the ledger total and the
+   VAT report are not guaranteed to reconcile to the cent. This plan stores
+   `ratio` but computes nothing.
 5. Exposing `ratio` on the flow read/write schemas and in `FlowForm.tsx`. After
    this plan the column exists but no API can set it, so every flow stays at 1.
