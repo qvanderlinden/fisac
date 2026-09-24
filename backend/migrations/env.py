@@ -12,6 +12,7 @@ from fisac.models import (  # noqa: F401 - registers the tables with Base.metada
     Category,
     Flow,
     FlowLine,
+    LedgerAccount,
 )
 
 config = context.config
