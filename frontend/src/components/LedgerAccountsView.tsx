@@ -27,6 +27,54 @@ const CLASS_LABELS: Record<number, string> = {
 // constraints, so a bad code is caught before a round trip.
 const CODE_PATTERN = /^[1-7][0-9]*$/
 
+// One row's name is inline-editable. Local draft is seeded from the fetched
+// ledger account and committed on blur only when it actually changed (a
+// rejected commit reverts via the refresh that follows) - mirrors
+// CategoriesView's CategoryRow/commitName.
+function LedgerRow({
+  row,
+  onRename,
+  onDelete,
+}: {
+  row: LedgerAccountRead
+  onRename: (name: string) => Promise<void>
+  onDelete: () => Promise<void>
+}) {
+  const [name, setName] = useState(row.name)
+
+  useEffect(() => {
+    setName(row.name)
+  }, [row])
+
+  function commitName() {
+    const trimmed = name.trim()
+    if (trimmed === '' || trimmed === row.name) {
+      setName(row.name)
+      return
+    }
+    onRename(trimmed)
+  }
+
+  return (
+    <div className="ledger-row">
+      <span className="ledger-code">{row.code}</span>
+      <span className="ledger-class-badge">
+        {row.pcmn_class} {CLASS_LABELS[row.pcmn_class]}
+      </span>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={commitName}
+        aria-label={`Name of ${row.code}`}
+      />
+      <button type="button" className="line-remove" onClick={onDelete} aria-label={`Delete ${row.code}`}>
+        ×
+      </button>
+    </div>
+  )
+}
+
 export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
   const [rows, setRows] = useState<LedgerAccountRead[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,13 +82,29 @@ export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
   const [newCode, setNewCode] = useState('')
   const [newName, setNewName] = useState('')
 
+  async function refresh() {
+    setRows(await listLedgerAccounts(accountId))
+    setLoading(false)
+  }
+
   useEffect(() => {
     setLoading(true)
-    listLedgerAccounts(accountId).then((fetched) => {
-      setRows(fetched)
-      setLoading(false)
-    })
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId])
+
+  // Wraps a mutation so failures (e.g. a name cleared to empty -> 422, or a
+  // delete that no longer applies) surface in the shared error line, and the
+  // list re-syncs with the server either way - mirrors CategoriesView's run().
+  async function run(mutation: () => Promise<unknown>) {
+    setError(null)
+    try {
+      await mutation()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operation failed')
+    }
+    await refresh()
+  }
 
   const codeValid = CODE_PATTERN.test(newCode)
   const canAdd = codeValid && newName.trim() !== ''
@@ -59,16 +123,6 @@ export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
     } catch (e) {
       setError(e instanceof Error && e.message.startsWith('409') ? 'That code already exists.' : String(e))
     }
-  }
-
-  async function rename(row: LedgerAccountRead, name: string) {
-    const updated = await updateLedgerAccount(accountId, row.id, { name })
-    setRows((current) => current.map((r) => (r.id === updated.id ? updated : r)))
-  }
-
-  async function remove(row: LedgerAccountRead) {
-    await deleteLedgerAccount(accountId, row.id)
-    setRows((current) => current.filter((r) => r.id !== row.id))
   }
 
   if (loading) return <p className="empty-state">Loading…</p>
@@ -110,26 +164,12 @@ export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
       {rows.length === 0 && <p className="empty-state">No ledger accounts yet.</p>}
 
       {rows.map((row) => (
-        <div className="ledger-row" key={row.id}>
-          <span className="ledger-code">{row.code}</span>
-          <span className="ledger-class-badge">
-            {row.pcmn_class} {CLASS_LABELS[row.pcmn_class]}
-          </span>
-          <input
-            type="text"
-            value={row.name}
-            onChange={(e) =>
-              setRows((current) =>
-                current.map((r) => (r.id === row.id ? { ...r, name: e.target.value } : r)),
-              )
-            }
-            onBlur={(e) => rename(row, e.target.value.trim())}
-            aria-label={`Name of ${row.code}`}
-          />
-          <button type="button" className="line-remove" onClick={() => remove(row)} aria-label={`Delete ${row.code}`}>
-            ×
-          </button>
-        </div>
+        <LedgerRow
+          key={row.id}
+          row={row}
+          onRename={(name) => run(() => updateLedgerAccount(accountId, row.id, { name }))}
+          onDelete={() => run(() => deleteLedgerAccount(accountId, row.id))}
+        />
       ))}
     </div>
   )
