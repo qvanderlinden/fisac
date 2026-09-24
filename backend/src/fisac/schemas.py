@@ -84,6 +84,36 @@ class CategoryRead(BaseModel):
     sort_key: str
 
 
+# --- Ledger accounts --------------------------------------------------------
+
+# Digits only, first digit a real PCMN class. Validating the shape here turns a
+# bad code into a 422 instead of letting it reach the database's
+# ck_ledger_accounts_code_digits / ck_ledger_accounts_class_range as a 500.
+_LEDGER_CODE = r"^[1-7][0-9]*$"
+
+
+class LedgerAccountCreate(BaseModel):
+    code: str = Field(pattern=_LEDGER_CODE, max_length=20)
+    name: str = Field(min_length=1, max_length=200)
+
+
+class LedgerAccountUpdate(BaseModel):
+    code: str | None = Field(default=None, pattern=_LEDGER_CODE, max_length=20)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class LedgerAccountRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    account_id: int
+    code: str
+    name: str
+    # Derived by the router from code[0], never sent by the client - the
+    # ck_ledger_accounts_class_matches_code constraint requires them to agree.
+    pcmn_class: int
+
+
 # --- Flow lines -------------------------------------------------------------
 
 
