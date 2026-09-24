@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ListFilter, MoreHorizontal, Plus, Search, Sparkles } from 'lucide-react'
+import { ListFilter, MoreHorizontal, Plus, Search, Sparkles, TriangleAlert } from 'lucide-react'
 import {
   bulkDeleteFlows,
   bulkUpdateFlows,
@@ -21,7 +21,7 @@ import type {
   LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
-import { FLOW_KIND_LABELS, PAYMENT_METHOD_LABELS } from '../accountingDisplay'
+import { FLOW_KIND_LABELS, PAYMENT_METHOD_LABELS, isFlowIncomplete } from '../accountingDisplay'
 import { FlowGenerator } from './FlowGenerator'
 import { FlowBulkEditDialog } from './FlowBulkEditDialog'
 import { FlowRow } from './FlowRow'
@@ -32,10 +32,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Popover } from '@/components/ui/popover'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-// chevron + select + name + category + invoice + method + payment date +
+// flag + chevron + select + name + category + invoice + method + payment date +
 // amount + paid + delete. The reverse-charge column (expenses of VAT-registered
 // accounts only) adds one more - see columnCount below.
-const BASE_COLUMN_COUNT = 10
+const BASE_COLUMN_COUNT = 11
 
 type SortKey =
   | 'name'
@@ -93,6 +93,8 @@ export function FlowList({ account, kind }: FlowListProps) {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [search, setSearch] = useState('')
+  // Missing a category, or holding a line booked to no ledger account.
+  const [onlyIncomplete, setOnlyIncomplete] = useState(false)
   // At most one row is expanded (showing its line editor) at a time.
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [generating, setGenerating] = useState(false)
@@ -136,6 +138,9 @@ export function FlowList({ account, kind }: FlowListProps) {
 
   const term = search.trim().toLowerCase()
   const activeFilterCount = Object.values(filters).filter((v) => v !== 'any').length
+  // Counted over every flow of this kind, not the filtered set, so the badge
+  // does not drop to zero the moment you switch the filter on.
+  const incompleteCount = flows.filter(isFlowIncomplete).length
 
   const filtered = flows.filter((f) => {
     if (term !== '' && !`${f.name} ${categoryName(f.category_id)}`.toLowerCase().includes(term)) {
@@ -149,6 +154,7 @@ export function FlowList({ account, kind }: FlowListProps) {
     }
     if (filters.paid === 'paid' && !f.paid) return false
     if (filters.paid === 'unpaid' && f.paid) return false
+    if (onlyIncomplete && !isFlowIncomplete(f)) return false
     return true
   })
 
@@ -337,6 +343,17 @@ export function FlowList({ account, kind }: FlowListProps) {
           </div>
 
           <div className="flows-toolbar-actions">
+            <button
+              type="button"
+              className={onlyIncomplete ? 'toolbar-btn is-active' : 'toolbar-btn'}
+              onClick={() => setOnlyIncomplete((v) => !v)}
+              aria-pressed={onlyIncomplete}
+              title="Flows missing a category, or with a line booked to no ledger account"
+            >
+              <TriangleAlert className="toolbar-btn-icon" aria-hidden /> Incomplete
+              {incompleteCount > 0 && <span className="toolbar-btn-count">{incompleteCount}</span>}
+            </button>
+
             <Popover
               align="right"
               triggerClassName={activeFilterCount > 0 ? 'toolbar-btn is-active' : 'toolbar-btn'}
@@ -503,6 +520,7 @@ export function FlowList({ account, kind }: FlowListProps) {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="flow-flag-cell" />
                   <TableHead className="flow-expand-cell" />
                   <TableHead>
                     <Checkbox

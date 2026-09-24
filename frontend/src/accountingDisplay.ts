@@ -1,5 +1,5 @@
 import { CalendarCheck, CreditCard, Landmark, type LucideIcon } from 'lucide-react'
-import type { FlowKind, PaymentMethod } from './api/types'
+import type { FlowKind, FlowRead, PaymentMethod } from './api/types'
 
 export const FLOW_KIND_LABELS: Record<FlowKind, string> = {
   revenue: 'Revenue',
@@ -107,4 +107,47 @@ export function visaPaymentDate(
   if (closingDay == null) return toInputValue(nextDayOfMonth(invoice, visaDay))
   const statementClose = nextDayOfMonth(invoice, closingDay)
   return toInputValue(nextDayOfMonth(statementClose, visaDay))
+}
+
+// --- Completeness -----------------------------------------------------------
+
+// What the annual accounts need from a flow but it can be missing. A flow with
+// no lines is not "unbooked" - there is nothing to book yet - though it can
+// still be missing a category.
+export interface FlowGaps {
+  noCategory: boolean
+  unbooked: number
+  lineCount: number
+}
+
+export function flowGaps(flow: FlowRead): FlowGaps {
+  return {
+    // No category makes the booking formula read 0% of the VAT as deductible,
+    // so the whole VAT is booked as cost. On a revenue flow that over-states
+    // the sale - see the known defect in the ledger accounts design doc.
+    noCategory: flow.category_id === null,
+    // Unbooked lines land in the annual accounts' "unassigned" bucket rather
+    // than under any ledger account.
+    unbooked: flow.lines.filter((l) => l.ledger_account_id === null).length,
+    lineCount: flow.lines.length,
+  }
+}
+
+export function isFlowIncomplete(flow: FlowRead): boolean {
+  const gaps = flowGaps(flow)
+  return gaps.noCategory || gaps.unbooked > 0
+}
+
+// One line naming every gap, for the row marker's tooltip. Empty when nothing
+// is missing.
+export function flowGapsSummary(flow: FlowRead): string {
+  const gaps = flowGaps(flow)
+  const parts: string[] = []
+  if (gaps.noCategory) parts.push('No category')
+  if (gaps.unbooked > 0) {
+    parts.push(
+      `${gaps.unbooked} of ${gaps.lineCount} ${gaps.lineCount === 1 ? 'line' : 'lines'} unbooked`,
+    )
+  }
+  return parts.join('; ')
 }

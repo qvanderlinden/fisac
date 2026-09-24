@@ -1880,3 +1880,39 @@ h4 {
   margin-top: 0.5rem;
   border-top-width: 2px;
 }
+
+/* --- Incomplete flow marker ------------------------------------------------
+   A flow missing a category, or holding a line booked to no ledger account.
+   Amber rather than the negative red, which in this app means money out. */
+:root {
+  --warning: #b8860b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --warning: #e0a42b;
+  }
+}
+
+.flow-flag-cell {
+  width: 1.75rem;
+  padding-right: 0;
+  text-align: center;
+}
+
+.flow-incomplete {
+  color: var(--warning);
+  cursor: help;
+  font-size: 0.85em;
+  line-height: 1;
+}
+
+.toolbar-btn-count {
+  background: var(--warning);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.75em;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+}

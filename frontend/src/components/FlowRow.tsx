@@ -9,7 +9,7 @@ import type {
   LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
-import { PAYMENT_METHOD_LABELS, amountClass, formatDate, formatFlowAmount, visaPaymentDate } from '../accountingDisplay'
+import { PAYMENT_METHOD_LABELS, amountClass, flowGapsSummary, formatDate, formatFlowAmount, isFlowIncomplete, visaPaymentDate } from '../accountingDisplay'
 import { PAYMENT_METHODS } from './FlowForm'
 import { LinesEditor, linesToDrafts, linesToPayload, type LineDraft } from './LinesEditor'
 import { Button } from '@/components/ui/button'
@@ -138,6 +138,21 @@ export function FlowRow({
   return (
     <>
       <TableRow data-state={selected ? 'selected' : undefined}>
+        <TableCell className="flow-flag-cell">
+          {/* Only the gaps the annual accounts care about: no category, or a
+              line booked to no ledger account. Unbooked lines are otherwise
+              invisible until the row is expanded. */}
+          {isFlowIncomplete(flow) && (
+            <span
+              className="flow-incomplete"
+              role="img"
+              aria-label={`Incomplete: ${flowGapsSummary(flow)}`}
+              title={flowGapsSummary(flow)}
+            >
+              ⚠
+            </span>
+          )}
+        </TableCell>
         <TableCell className="flow-expand-cell">
           <button
             type="button"
