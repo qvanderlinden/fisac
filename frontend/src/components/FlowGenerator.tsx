@@ -34,6 +34,13 @@ interface FlowGeneratorProps {
 // Wraps an unsaved FlowCreate proposal as a pseudo-FlowRead so the existing
 // FlowForm can edit it - FlowForm only reads name/category/dates/method/paid/
 // lines, so the fake id/sort_key fields are never load-bearing.
+//
+// This is deliberately not routed through the LinesEditor linesToDrafts /
+// linesToPayload pair: those convert between FlowLineRead and LineDraft, but
+// this function goes the other way, synthesizing a fake FlowLineRead (with a
+// negative id and a sort_key) from an already-built FlowLineCreate. There is
+// no canonical helper for that direction. It carries ledger_account_id
+// through explicitly below - keep that if this function is ever touched.
 function proposalToFlowRead(proposal: FlowCreate, accountId: number): FlowRead {
   const totals = linesTotals(proposal.lines)
   return {

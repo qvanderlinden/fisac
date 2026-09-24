@@ -57,6 +57,19 @@ async def create_ledger_account(
     except IntegrityError:
         # uq_ledger_accounts_account_code - a duplicate code is a client
         # mistake, not a server error.
+        #
+        # This catches ANY IntegrityError on the insert, not just that unique
+        # constraint, and always reports it as a duplicate code. That is safe
+        # today only because the other two constraints on this table
+        # (ck_ledger_accounts_code_digits, ck_ledger_accounts_class_range) are
+        # already unreachable here: LedgerAccountCreate.code's Pydantic
+        # pattern (_LEDGER_CODE) enforces digits-only and a leading class 1-7
+        # before this ever reaches the database, and pcmn_class is always
+        # derived from that same validated code, never client-supplied. If a
+        # constraint is ever added to this table that Pydantic doesn't
+        # already guarantee, this message would misreport it as a duplicate
+        # code - narrow the except clause (e.g. inspect the constraint name)
+        # at that point.
         await session.rollback()
         raise HTTPException(
             status_code=409,

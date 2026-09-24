@@ -661,6 +661,7 @@ git commit -m "feat: allow booking flow lines to ledger accounts"
 - Modify: `frontend/src/components/LinesEditor.tsx` (`LineDraft`, `emptyLine`, `linesToDrafts`, `linesToPayload`, props, row markup)
 - Modify: `frontend/src/components/FlowList.tsx` (fetch and drill)
 - Modify: `frontend/src/components/FlowForm.tsx`, `FlowRow.tsx`, `FlowGenerator.tsx` (one prop each, passed through)
+- Modify: `frontend/src/components/ProjectionView.tsx` (renders `FlowForm`, so it also needs the prop threaded through)
 - Modify: `frontend/src/styles.css`
 
 **Interfaces:**
@@ -766,9 +767,11 @@ In `frontend/src/components/FlowList.tsx`:
                     ledgerAccounts={ledgerAccounts}
 ```
 
-- [ ] **Step 5: Thread the prop through the three intermediates**
+- [ ] **Step 5: Thread the prop through the four intermediates**
 
-In each of `FlowForm.tsx`, `FlowRow.tsx` and `FlowGenerator.tsx`:
+In each of `FlowForm.tsx`, `FlowRow.tsx`, `FlowGenerator.tsx`, and
+`ProjectionView.tsx` (which renders `FlowForm` for editing a flow from the
+projection table, and so must also receive the chart and forward it):
 
 1. Add to the props interface, after `categories: CategoryRead[]`:
 
@@ -778,7 +781,9 @@ In each of `FlowForm.tsx`, `FlowRow.tsx` and `FlowGenerator.tsx`:
 
 2. Add `LedgerAccountRead` to the `../api/types` type import.
 3. Add `ledgerAccounts` to the destructured parameter list.
-4. Pass it to the editor — `FlowForm.tsx:194`, `FlowRow.tsx:261`, `FlowGenerator.tsx:163`:
+4. Pass it to the editor — `FlowForm.tsx:194`, `FlowRow.tsx:261`,
+   `FlowGenerator.tsx:163`. `ProjectionView.tsx` passes it straight through to
+   the `FlowForm` it renders:
 
 ```tsx
 <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
@@ -810,7 +815,7 @@ With the API running and `npm run dev`: expand a flow, pick a ledger account on 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add frontend/src/api/types.ts frontend/src/components/LinesEditor.tsx frontend/src/components/FlowList.tsx frontend/src/components/FlowForm.tsx frontend/src/components/FlowRow.tsx frontend/src/components/FlowGenerator.tsx frontend/src/styles.css
+git add frontend/src/api/types.ts frontend/src/components/LinesEditor.tsx frontend/src/components/FlowList.tsx frontend/src/components/FlowForm.tsx frontend/src/components/FlowRow.tsx frontend/src/components/FlowGenerator.tsx frontend/src/components/ProjectionView.tsx frontend/src/styles.css
 git commit -m "feat: pick a ledger account per invoice line"
 ```
 
@@ -1473,7 +1478,8 @@ git commit -m "feat: add annual accounts view"
 - `/api/accounts/{id}/annual-accounts?year=` returns both years and reproduces the worked example's figures exactly.
 - The Annual tab renders classes descending with subtotals, an unassigned row, a result row, and a working show-all toggle.
 - `cd frontend && npm run build` passes.
-- Six commits on `feat/ledger-accounts-wiring`.
+- Seven commits on `feat/ledger-accounts-wiring` (six planned here, plus one
+  legitimate mid-task fix).
 
 ## Explicitly not in this plan
 

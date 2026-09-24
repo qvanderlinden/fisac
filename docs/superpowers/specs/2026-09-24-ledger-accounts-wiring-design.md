@@ -132,14 +132,11 @@ clearing turns out to bite.
 
 ### Frontend
 
-`LinesEditor` gains an `accountId` prop and, per line, a `<select>` of the
-chart ordered by code, each option labelled `610000 — Fournitures`, plus a
-blank option meaning unbooked. `LineDraft` gains `ledger_account_id: string`
-(`''` for unbooked), converted at the `linesToPayload` boundary like the
-other fields.
-
-All four call sites pass `accountId`: `FlowForm.tsx`, `FlowRow.tsx`,
-`FlowGenerator.tsx` (and `linesToDrafts` must carry the field back out).
+`LinesEditor` gains a `ledgerAccounts: LedgerAccountRead[]` prop and, per
+line, a `<select>` of the chart ordered by code, each option labelled
+`610000 — Fournitures`, plus a blank option meaning unbooked. `LineDraft`
+gains `ledger_account_id: string` (`''` for unbooked), converted at the
+`linesToPayload` boundary like the other fields.
 
 **`LinesEditor` receives the chart as a prop, fetched once in `FlowList`.**
 
@@ -152,6 +149,11 @@ the same path, to the same three components, which each already declare a
 `Promise.all` and one more prop alongside a sibling list that is already
 there, and it fetches the chart once per account instead of once per opened
 editor.
+
+All four call sites pass `ledgerAccounts` down to `LinesEditor`:
+`FlowForm.tsx`, `FlowRow.tsx`, `FlowGenerator.tsx` (and `linesToDrafts` must
+carry the field back out), and `ProjectionView.tsx`, which renders `FlowForm`
+and so must also receive and forward the chart.
 
 A module-level cache was also considered and rejected: it goes stale the
 moment the Ledger tab adds an account, and invalidation is machinery this
@@ -261,7 +263,7 @@ There is no Python test suite and this work does not add one.
 
 - **Backend:** real HTTP calls against a running API for each route, including
   the failure cases — a bad code shape (422), a duplicate code (409), another
-  Account's ledger account on a line (422), another Account's ledger account
+  Account's ledger account on a line (400), another Account's ledger account
   by id in the path (404).
 - **Frontend:** `cd frontend && npm run build` (`tsc -b`) must pass, and each
   view driven in a browser against the running API.

@@ -83,8 +83,17 @@ export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
   const [newName, setNewName] = useState('')
 
   async function refresh() {
-    setRows(await listLedgerAccounts(accountId))
-    setLoading(false)
+    // Caught here (not left to the caller) so a failed list call always
+    // clears loading instead of leaving the tab stuck on "Loading…" forever,
+    // and so run()'s post-mutation `await refresh()` can never reject with an
+    // unhandled rejection.
+    try {
+      setRows(await listLedgerAccounts(accountId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load ledger accounts')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {

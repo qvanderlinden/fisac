@@ -27,6 +27,7 @@ import { FlowBulkEditDialog } from './FlowBulkEditDialog'
 import { FlowRow } from './FlowRow'
 import { NewFlowRow } from './NewFlowRow'
 import { PAYMENT_METHODS } from './FlowForm'
+import { linesToDrafts, linesToPayload } from './LinesEditor'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover } from '@/components/ui/popover'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -58,6 +59,13 @@ const NO_FILTERS: FilterState = { category: 'any', method: 'any', paid: 'any' }
 
 // A FlowRead reduced to the editable FlowCreate payload the update endpoint
 // wants (full-replace semantics), so a single changed field can be merged on top.
+//
+// Lines are round-tripped through the same LinesEditor draft <-> payload pair
+// every editor uses (linesToDrafts / linesToPayload), rather than a hand-rolled
+// field list here. A hand-rolled list previously omitted ledger_account_id,
+// which meant every inline edit in this table (rename, dates, category,
+// payment method, paid, reverse-charge) silently unbooked every line on the
+// flow, since PATCH has full-replace semantics on the line set.
 function flowToPayload(flow: FlowRead): FlowCreate {
   return {
     name: flow.name,
@@ -68,11 +76,7 @@ function flowToPayload(flow: FlowRead): FlowCreate {
     payment_method: flow.payment_method,
     paid: flow.paid,
     reverse_charge: flow.reverse_charge,
-    lines: flow.lines.map((l) => ({
-      description: l.description,
-      amount_net: l.amount_net,
-      vat_rate: l.vat_rate,
-    })),
+    lines: linesToPayload(linesToDrafts(flow.lines)),
   }
 }
 

@@ -129,12 +129,19 @@ async def get_annual_accounts(
     # Every chart account is returned, including all-zero ones, so the view's
     # "show all accounts" toggle filters client-side without a refetch.
     by_class: dict[int, list[LedgerAccountTotals]] = defaultdict(list)
+    consumed_ids: set[int] = set()
     for la in ledger_accounts:
-        c = current.get(la.id, Decimal("0"))
-        p = prior.get(la.id, Decimal("0"))
+        # Quantized here (not just relying on _line_amount's per-line rounding)
+        # so an account with no activity in either year serializes as "0.00",
+        # not "0" - matching how vat.py quantizes so empty quarters read the
+        # same way. The default Decimal("0") for a missing key has no cents
+        # exponent until this call.
+        c = current.get(la.id, Decimal("0")).quantize(_CENTS)
+        p = prior.get(la.id, Decimal("0")).quantize(_CENTS)
         by_class[la.pcmn_class].append(
             LedgerAccountTotals(id=la.id, code=la.code, name=la.name, current=c, prior=p, delta=c - p)
         )
+        consumed_ids.add(la.id)
 
     # Descending: a compte de résultats reads produits (7) above charges (6).
     # A class 1-5 group appears if the chart has one - booking there is allowed
@@ -153,14 +160,30 @@ async def get_annual_accounts(
 
     uc = current.get(None, Decimal("0"))
     up = prior.get(None, Decimal("0"))
+    # by_class above only reads ledger ids that are in *this* chart. Any id in
+    # current/prior that isn't (e.g. the ledger account was deleted by another
+    # request racing this one, or after these totals were computed but before
+    # the chart was re-queried) would otherwise be read nowhere at all - never
+    # grouped, never unassigned - and silently drop out of every subtotal and
+    # out of `result`. Fold it into unassigned instead, on the same principle
+    # already applied to unbooked (NULL) lines: nothing booked should be able
+    # to vanish from the bottom line because of a grouping decision.
+    stray_ids = (set(current) | set(prior)) - consumed_ids - {None}
+    for stray_id in stray_ids:
+        uc += current.get(stray_id, Decimal("0"))
+        up += prior.get(stray_id, Decimal("0"))
+    # Quantized for the same reason as the per-account c/p above: an account
+    # with no unassigned activity must still read "0.00", matching vat.py.
+    uc = uc.quantize(_CENTS)
+    up = up.quantize(_CENTS)
     unassigned = UnassignedTotals(
         current=uc, prior=up, delta=uc - up, line_count=unbooked_current
     )
 
     # Sums every class plus the unassigned bucket, so no grouping decision can
     # quietly keep something out of the bottom line.
-    rc = sum((c.current_total for c in classes), Decimal("0")) + uc
-    rp = sum((c.prior_total for c in classes), Decimal("0")) + up
+    rc = (sum((c.current_total for c in classes), Decimal("0")) + uc).quantize(_CENTS)
+    rp = (sum((c.prior_total for c in classes), Decimal("0")) + up).quantize(_CENTS)
     return AnnualAccounts(
         year=target,
         classes=classes,
