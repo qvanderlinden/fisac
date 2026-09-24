@@ -122,6 +122,10 @@ class FlowLineCreate(BaseModel):
     # Net base (excl. VAT), unsigned - the flow's kind supplies the sign.
     amount_net: Decimal = Field(ge=0)
     vat_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    # Which ledger account this line books to; null means unbooked. Validated
+    # against the flow's Account in routers/flows.py - the database cannot
+    # check it, since the FK only points at ledger_accounts.id.
+    ledger_account_id: int | None = None
 
 
 class FlowLineRead(BaseModel):
@@ -132,6 +136,7 @@ class FlowLineRead(BaseModel):
     amount_net: Decimal
     vat_rate: Decimal
     sort_key: str
+    ledger_account_id: int | None
 
 
 # --- Flows ------------------------------------------------------------------
