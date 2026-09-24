@@ -105,8 +105,10 @@ annual accounts.
 
 Implementation: on every write that carries lines, collect the non-null
 `ledger_account_id` values, and if any are present run one query for the ids
-among them that belong to this Account. Anything unmatched is a **422**. One
-query per write regardless of line count — not one per line.
+among them that belong to this Account. Anything unmatched is a **400**,
+matching `_validate_category`'s existing status for the same class of error —
+not 422, which in this codebase means a Pydantic shape failure. One query per
+write regardless of line count, not one per line.
 
 Exactly three routes accept client-supplied lines and therefore need this
 check — verified against `routers/flows.py`, not assumed:
@@ -139,13 +141,21 @@ other fields.
 All four call sites pass `accountId`: `FlowForm.tsx`, `FlowRow.tsx`,
 `FlowGenerator.tsx` (and `linesToDrafts` must carry the field back out).
 
-**`LinesEditor` fetches the chart itself on mount; there is no cache.** The
-considered alternatives were fetching once in `FlowList` and drilling the list
-through three components — which avoids repeat requests but threads a prop
-through an already 604-line file — and a module-level cache, which goes stale
-the moment the Ledger tab adds an account and would need invalidation
-machinery this codebase does not otherwise have. Fetching on mount is always
-correct and costs a handful of small requests. Revisit only if it feels slow.
+**`LinesEditor` receives the chart as a prop, fetched once in `FlowList`.**
+
+An earlier draft had `LinesEditor` fetch it on mount, reasoning that drilling
+the list would burden an already 604-line `FlowList`. That reasoning was
+wrong. `FlowList` already fetches `categories` (line 105, inside an existing
+`Promise.all`) and drills them to `FlowForm`, `FlowRow` and `FlowGenerator` —
+the same path, to the same three components, which each already declare a
+`categories: CategoryRead[]` prop. Mirroring it costs one more entry in that
+`Promise.all` and one more prop alongside a sibling list that is already
+there, and it fetches the chart once per account instead of once per opened
+editor.
+
+A module-level cache was also considered and rejected: it goes stale the
+moment the Ledger tab adds an account, and invalidation is machinery this
+codebase does not otherwise have.
 
 ## Slice 3 — annual accounts
 
