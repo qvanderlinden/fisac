@@ -67,6 +67,26 @@ export interface CategoryUpdate {
   vat_deduction_rate?: string
 }
 
+export interface LedgerAccountRead {
+  id: number
+  account_id: number
+  code: string
+  name: string
+  // Belgian PCMN class, always the code's first digit. Derived server-side;
+  // never sent when creating or updating.
+  pcmn_class: number
+}
+
+export interface LedgerAccountCreate {
+  code: string
+  name: string
+}
+
+export interface LedgerAccountUpdate {
+  code?: string
+  name?: string
+}
+
 export interface FlowLineCreate {
   description?: string | null
   // Net base (excl. VAT), unsigned.

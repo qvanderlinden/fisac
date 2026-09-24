@@ -4,10 +4,11 @@ import type { AccountRead } from './api/types'
 import { AccountSwitcher } from './components/AccountSwitcher'
 import { CategoriesView } from './components/CategoriesView'
 import { FlowList } from './components/FlowList'
+import { LedgerAccountsView } from './components/LedgerAccountsView'
 import { ProjectionView } from './components/ProjectionView'
 import { VatView } from './components/VatView'
 
-type Tab = 'revenues' | 'expenses' | 'categories' | 'projection' | 'vat'
+type Tab = 'revenues' | 'expenses' | 'categories' | 'ledger' | 'projection' | 'vat'
 
 const SELECTED_ACCOUNT_KEY = 'fisac.selectedAccountId'
 
@@ -38,7 +39,7 @@ export default function App() {
     }
   }, [selectedAccountId])
 
-  const wideTab = tab === 'revenues' || tab === 'expenses' || tab === 'categories'
+  const wideTab = tab === 'revenues' || tab === 'expenses' || tab === 'categories' || tab === 'ledger'
   const pageClass = wideTab ? 'page page-wide' : tab === 'vat' ? 'page page-fill' : 'page'
 
   return (
@@ -74,6 +75,12 @@ export default function App() {
               🏷️ Categories
             </button>
             <button
+              className={`sidebar-nav-item${tab === 'ledger' ? ' active' : ''}`}
+              onClick={() => setTab('ledger')}
+            >
+              📒 Ledger
+            </button>
+            <button
               className={`sidebar-nav-item${tab === 'projection' ? ' active' : ''}`}
               onClick={() => setTab('projection')}
             >
@@ -106,6 +113,9 @@ export default function App() {
           )}
           {!loading && selectedAccount !== null && tab === 'categories' && (
             <CategoriesView accountId={selectedAccount.id} />
+          )}
+          {!loading && selectedAccount !== null && tab === 'ledger' && (
+            <LedgerAccountsView accountId={selectedAccount.id} />
           )}
           {!loading && selectedAccount !== null && tab === 'projection' && (
             <ProjectionView
