@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { listAccounts } from './api/client'
 import type { AccountRead } from './api/types'
 import { AccountSwitcher } from './components/AccountSwitcher'
+import { AnnualAccountsView } from './components/AnnualAccountsView'
 import { CategoriesView } from './components/CategoriesView'
 import { FlowList } from './components/FlowList'
 import { LedgerAccountsView } from './components/LedgerAccountsView'
 import { ProjectionView } from './components/ProjectionView'
 import { VatView } from './components/VatView'
 
-type Tab = 'revenues' | 'expenses' | 'categories' | 'ledger' | 'projection' | 'vat'
+type Tab = 'revenues' | 'expenses' | 'categories' | 'ledger' | 'projection' | 'vat' | 'annual'
 
 const SELECTED_ACCOUNT_KEY = 'fisac.selectedAccountId'
 
@@ -40,7 +41,7 @@ export default function App() {
   }, [selectedAccountId])
 
   const wideTab = tab === 'revenues' || tab === 'expenses' || tab === 'categories' || tab === 'ledger'
-  const pageClass = wideTab ? 'page page-wide' : tab === 'vat' ? 'page page-fill' : 'page'
+  const pageClass = wideTab ? 'page page-wide' : tab === 'vat' || tab === 'annual' ? 'page page-fill' : 'page'
 
   return (
     <div className="app-shell">
@@ -92,6 +93,12 @@ export default function App() {
             >
               🧮 VAT
             </button>
+            <button
+              className={`sidebar-nav-item${tab === 'annual' ? ' active' : ''}`}
+              onClick={() => setTab('annual')}
+            >
+              📚 Annual
+            </button>
           </nav>
         )}
       </aside>
@@ -127,6 +134,9 @@ export default function App() {
           )}
           {!loading && selectedAccount !== null && tab === 'vat' && (
             <VatView account={selectedAccount} />
+          )}
+          {!loading && selectedAccount !== null && tab === 'annual' && (
+            <AnnualAccountsView account={selectedAccount} />
           )}
         </div>
       </main>

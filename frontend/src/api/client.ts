@@ -4,6 +4,7 @@ import type {
   AccountRead,
   AccountVat,
   AccountUpdate,
+  AnnualAccounts,
   CategoryCreate,
   CategoryRead,
   CategoryUpdate,
@@ -234,4 +235,11 @@ export function fetchProjection(accountId: number, toDate?: string): Promise<Acc
 export function fetchVat(accountId: number, year?: number): Promise<AccountVat> {
   const params = year != null ? `?${new URLSearchParams({ year: String(year) })}` : ''
   return request(`/accounts/${accountId}/vat${params}`)
+}
+
+// --- Annual accounts --------------------------------------------------------
+
+export function fetchAnnualAccounts(accountId: number, year?: number): Promise<AnnualAccounts> {
+  const query = year === undefined ? '' : `?year=${year}`
+  return request(`/accounts/${accountId}/annual-accounts${query}`)
 }

@@ -262,3 +262,45 @@ export interface AccountVat {
   total_net_due: string
   quarters: VatQuarter[]
 }
+
+// --- Annual accounts ---------------------------------------------------------
+
+export interface LedgerAccountTotals {
+  id: number
+  code: string
+  name: string
+  // Signed: revenue positive, expense negative. A class-6 account therefore
+  // holds a negative total.
+  current: string
+  prior: string
+  delta: string
+}
+
+export interface LedgerClassTotals {
+  pcmn_class: number
+  label: string
+  accounts: LedgerAccountTotals[]
+  current_total: string
+  prior_total: string
+  delta: string
+}
+
+export interface UnassignedTotals {
+  current: string
+  prior: string
+  delta: string
+  line_count: number
+}
+
+export interface PeriodTotals {
+  current: string
+  prior: string
+  delta: string
+}
+
+export interface AnnualAccounts {
+  year: number
+  classes: LedgerClassTotals[]
+  unassigned: UnassignedTotals
+  result: PeriodTotals
+}
