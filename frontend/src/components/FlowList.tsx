@@ -36,13 +36,13 @@ import type {
   LedgerAccountRead,
 } from '../api/types'
 import { PAYMENT_METHOD_LABELS, isFlowIncomplete } from '../accountingDisplay'
-import { frameError } from '../errors'
+import { RELOAD_LEAD, frameError } from '../errors'
 import { countLabel } from '../format'
 import { ConfirmDialog } from './ConfirmDialog'
 import { CELL, HEAD } from './editableTable'
 import { FlowBulkEditDialog } from './FlowBulkEditDialog'
 import { FlowGenerator } from './FlowGenerator'
-import { mergeFlowChanges } from './flowPayload'
+import { mergeFlowChanges, replaceFlow } from './flowPayload'
 import { PAYMENT_METHODS } from './flowOptions'
 import { FlowRow } from './FlowRow'
 import { NewFlowRow } from './NewFlowRow'
@@ -53,8 +53,6 @@ import { createSerialQueue } from './serialQueue'
 // date + amount + paid + delete. The reverse-charge column (expenses of
 // VAT-registered accounts only) adds one more - see columnCount below.
 const BASE_COLUMN_COUNT = 11
-
-const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
 
 type SortKey = 'name' | 'category' | 'invoice_date' | 'payment_method' | 'payment_date' | 'amount' | 'paid'
 type SortDir = 'asc' | 'desc'
@@ -240,7 +238,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
     })
   }
 
-  function sortableHead(key: SortKey, label: string, align?: 'right') {
+  function sortableHead(key: SortKey, label: string, align?: 'right', expansion?: string) {
     const active = sort?.key === key
     return (
       <TableHead
@@ -252,7 +250,14 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
           onClick={() => toggleSort(key)}
           className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit uppercase [font:inherit] tracking-[inherit] transition-colors hover:text-fg-accent"
         >
-          {label}
+          {expansion ? (
+            <>
+              <span aria-hidden="true">{label}</span>
+              <span className="sr-only">{expansion}</span>
+            </>
+          ) : (
+            label
+          )}
           <Icon icon={active ? (sort.dir === 'asc' ? ArrowUp : ArrowDown) : ChevronsUpDown} size={11} />
         </button>
       </TableHead>
@@ -284,19 +289,25 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
   }
 
   // Saves one inline change. The payload is built inside the queued task from
-  // the freshest copy of the flow, not from the render-time `flow`.
-  function commitFlow(flow: FlowRead, changes: Partial<FlowCreate>): Promise<void> {
+  // the freshest copy of the flow, not from the render-time `flow`. Resolves
+  // to whether the server accepted the change.
+  function commitFlow(flow: FlowRead, changes: Partial<FlowCreate>): Promise<boolean> {
     const accountId = account.id
     return enqueue(async () => {
       setError(null)
       try {
         const base =
           (latest.current.accountId === accountId ? flowsRef.current.find((f) => f.id === flow.id) : undefined) ?? flow
-        await updateFlow(accountId, flow.id, mergeFlowChanges(base, changes))
+        const saved = await updateFlow(accountId, flow.id, mergeFlowChanges(base, changes))
+        // Even if the reload below fails, the next commit on this row starts
+        // from what was just saved, not from the value before it.
+        if (latest.current.accountId === accountId) flowsRef.current = replaceFlow(flowsRef.current, saved)
+        return true
       } catch (err) {
         reportError(accountId, `« ${flow.name} » n’a pas été enregistré. ${frameError(err)}`)
+        return false
       } finally {
-        // On success this shows the new value; on failure it reverts the row.
+        // Shows the new value on success; on failure the row reverts itself.
         await refresh()
       }
     })
@@ -307,7 +318,8 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
     return enqueue(async () => {
       setError(null)
       try {
-        await setFlowPaid(accountId, flow.id, !flow.paid)
+        const saved = await setFlowPaid(accountId, flow.id, !flow.paid)
+        if (latest.current.accountId === accountId) flowsRef.current = replaceFlow(flowsRef.current, saved)
       } catch (err) {
         reportError(
           accountId,
@@ -492,7 +504,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
       )}
 
       {error && (
-        <Callout tone="negative" title="Action impossible">
+        <Callout tone="negative" title="Action impossible.">
           {error}
         </Callout>
       )}
@@ -522,7 +534,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
                 {sortableHead('name', 'nom')}
                 {sortableHead('category', 'catégorie')}
                 {sortableHead('invoice_date', 'date de facture')}
-                {sortableHead('payment_method', 'moyen')}
+                {sortableHead('payment_method', 'moyen', undefined, 'moyen de paiement')}
                 {sortableHead('payment_date', 'date de paiement')}
                 {sortableHead('amount', 'montant', 'right')}
                 {showReverseCharge && (

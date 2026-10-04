@@ -38,8 +38,9 @@ interface FlowRowProps {
   expanded: boolean
   onToggleExpanded: () => void
   // Persists a partial change (the parent merges it onto the full flow
-  // payload, PATCHes, then refreshes; a failed commit reverts on refresh).
-  onCommit: (changes: Partial<FlowCreate>) => Promise<void>
+  // payload, PATCHes, then refreshes). Resolves to whether the server
+  // accepted it, so a header field can put the saved value back.
+  onCommit: (changes: Partial<FlowCreate>) => Promise<boolean>
   onTogglePaid: () => Promise<void>
   // Asks the parent to confirm and delete.
   onDelete: () => void
@@ -61,17 +62,17 @@ export function FlowRow({
   onTogglePaid,
   onDelete,
 }: FlowRowProps) {
-  // Header-field drafts, committed on blur or Enter. Reseeded whenever the
-  // flow prop changes (e.g. after a refresh) so a rejected edit reverts.
+  // Header-field drafts, committed on blur or Enter. Each is reseeded from its
+  // own saved value only: a refresh after another row's commit hands this row
+  // a new flow object, and must not wipe what is being typed in a sibling
+  // field. A rejected commit puts the saved value back explicitly.
   const [name, setName] = useState(flow.name)
   const [invoiceDate, setInvoiceDate] = useState(flow.invoice_date)
   const [paymentDate, setPaymentDate] = useState(flow.payment_date ?? '')
 
-  useEffect(() => {
-    setName(flow.name)
-    setInvoiceDate(flow.invoice_date)
-    setPaymentDate(flow.payment_date ?? '')
-  }, [flow])
+  useEffect(() => setName(flow.name), [flow.name])
+  useEffect(() => setInvoiceDate(flow.invoice_date), [flow.invoice_date])
+  useEffect(() => setPaymentDate(flow.payment_date ?? ''), [flow.payment_date])
 
   // Line drafts are seeded when the row (re)opens - not on every refresh - so
   // an in-progress line edit isn't clobbered by an unrelated header commit.
@@ -100,7 +101,9 @@ export function FlowRow({
       setName(flow.name)
       return
     }
-    onCommit({ name: trimmed })
+    onCommit({ name: trimmed }).then((ok) => {
+      if (!ok) setName(flow.name)
+    })
   }
 
   function commitInvoiceDate() {
@@ -108,13 +111,17 @@ export function FlowRow({
       setInvoiceDate(flow.invoice_date)
       return
     }
-    onCommit({ invoice_date: invoiceDate })
+    onCommit({ invoice_date: invoiceDate }).then((ok) => {
+      if (!ok) setInvoiceDate(flow.invoice_date)
+    })
   }
 
   function commitPaymentDate() {
     const next = paymentDate || null
     if (next === (flow.payment_date ?? null)) return
-    onCommit({ payment_date: next })
+    onCommit({ payment_date: next }).then((ok) => {
+      if (!ok) setPaymentDate(flow.payment_date ?? '')
+    })
   }
 
   function changeMethod(value: string) {

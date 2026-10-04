@@ -4,7 +4,7 @@ import { Button, Callout, Card, Icon, IconButton, Input, cn, toast } from '@qvan
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
 import { createCategory, deleteCategory, listCategories, moveCategory, updateCategory } from '../api/client'
 import type { CategoryCreate, CategoryRead, CategoryUpdate } from '../api/types'
-import { frameError } from '../errors'
+import { RELOAD_LEAD, frameError } from '../errors'
 import { parseRate, rateInput } from '../format'
 import { ConfirmDialog } from './ConfirmDialog'
 import { CELL, CELL_CONTROL, HEAD, ROW } from './editableTable'
@@ -16,8 +16,6 @@ interface CategoriesViewProps {
 
 // grip + name + tax rate + vat rate + delete
 const COLUMN_COUNT = 5
-
-const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
 
 type DropPos = 'above' | 'below'
 
@@ -65,14 +63,12 @@ function CategoryRow({
   const [tax, setTax] = useState(rateInput(category.tax_deduction_rate))
   const [vat, setVat] = useState(rateInput(category.vat_deduction_rate))
 
-  // Keyed on the saved values, not the object: a refresh after another row's
-  // edit hands this row a new object with the same values, and must not wipe
-  // what is being typed here.
-  useEffect(() => {
-    setName(category.name)
-    setTax(rateInput(category.tax_deduction_rate))
-    setVat(rateInput(category.vat_deduction_rate))
-  }, [category.name, category.tax_deduction_rate, category.vat_deduction_rate])
+  // One effect per field, keyed on that field's saved value: a refresh after
+  // another row's edit (or a sibling field's) hands this row the same values
+  // again, and must not wipe what is being typed here.
+  useEffect(() => setName(category.name), [category.name])
+  useEffect(() => setTax(rateInput(category.tax_deduction_rate)), [category.tax_deduction_rate])
+  useEffect(() => setVat(rateInput(category.vat_deduction_rate)), [category.vat_deduction_rate])
 
   async function commit(patch: CategoryUpdate, revert: () => void) {
     if (!(await onCommit(patch))) revert()
@@ -436,7 +432,7 @@ export function CategoriesView({ accountId }: CategoriesViewProps) {
       )}
 
       {error && (
-        <Callout tone="negative" title="Action impossible">
+        <Callout tone="negative" title="Action impossible.">
           {error}
         </Callout>
       )}

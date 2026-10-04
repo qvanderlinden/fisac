@@ -29,3 +29,13 @@ export function flowToPayload(flow: FlowRead): FlowCreate {
 export function mergeFlowChanges(flow: FlowRead, changes: Partial<FlowCreate>): FlowCreate {
   return { ...flowToPayload(flow), ...changes }
 }
+
+/**
+ * The list with the flow of the same id swapped for `flow` (order kept), as a
+ * new array. A mutation's response is written into the freshest-copy list this
+ * way, so the next queued commit on that row builds on the saved value even
+ * when the follow-up reload fails.
+ */
+export function replaceFlow(flows: FlowRead[], flow: FlowRead): FlowRead[] {
+  return flows.map((f) => (f.id === flow.id ? flow : f))
+}

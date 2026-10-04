@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FlowLineRead, FlowRead } from '../api/types'
-import { flowToPayload, mergeFlowChanges } from './flowPayload'
+import { flowToPayload, mergeFlowChanges, replaceFlow } from './flowPayload'
 
 function line(patch: Partial<FlowLineRead> = {}): FlowLineRead {
   return {
@@ -79,5 +79,25 @@ describe('mergeFlowChanges', () => {
     mergeFlowChanges(base, { name: 'Autre', paid: true })
     expect(base.name).toBe('Loyer')
     expect(base.paid).toBe(false)
+  })
+})
+
+describe('replaceFlow', () => {
+  it('swaps the flow with the same id and keeps the order', () => {
+    const list = [flow({ id: 1 }), flow({ id: 2, name: 'Ancien' }), flow({ id: 3 })]
+    const next = replaceFlow(list, flow({ id: 2, name: 'Nouveau' }))
+    expect(next.map((f) => f.id)).toEqual([1, 2, 3])
+    expect(next[1].name).toBe('Nouveau')
+  })
+
+  it('leaves the list as it is when the id is unknown', () => {
+    const list = [flow({ id: 1 })]
+    expect(replaceFlow(list, flow({ id: 9 }))).toEqual(list)
+  })
+
+  it('does not mutate the list it was given', () => {
+    const list = [flow({ id: 1, name: 'Ancien' })]
+    replaceFlow(list, flow({ id: 1, name: 'Nouveau' }))
+    expect(list[0].name).toBe('Ancien')
   })
 })
