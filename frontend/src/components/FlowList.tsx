@@ -1,5 +1,20 @@
-import { useEffect, useState } from 'react'
-import { ListFilter, MoreHorizontal, Plus, Search, Sparkles, TriangleAlert } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronsUpDown,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+  Sparkles,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react'
+import { Button, Callout, Card, Checkbox, Icon, Input, Select, Tag, cn, toast } from '@qvanderlinden/ui'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
 import {
   bulkDeleteFlows,
   bulkUpdateFlows,
@@ -19,53 +34,40 @@ import type {
   FlowKind,
   FlowRead,
   LedgerAccountRead,
-  PaymentMethod,
 } from '../api/types'
-import { FLOW_KIND_LABELS, PAYMENT_METHOD_LABELS, isFlowIncomplete } from '../accountingDisplay'
-import { FlowGenerator } from './FlowGenerator'
+import { PAYMENT_METHOD_LABELS, isFlowIncomplete } from '../accountingDisplay'
+import { frameError } from '../errors'
+import { countLabel } from '../format'
+import { ConfirmDialog } from './ConfirmDialog'
+import { CELL, HEAD } from './editableTable'
 import { FlowBulkEditDialog } from './FlowBulkEditDialog'
-import { FlowRow } from './FlowRow'
-import { NewFlowRow } from './NewFlowRow'
 import { PAYMENT_METHODS } from './FlowForm'
+import { FlowGenerator } from './FlowGenerator'
+import { FlowRow } from './FlowRow'
 import { linesToDrafts, linesToPayload } from './LinesEditor'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Popover } from '@/components/ui/popover'
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { NewFlowRow } from './NewFlowRow'
+import { PageHeader } from './PageHeader'
 
-// flag + chevron + select + name + category + invoice + method + payment date +
-// amount + paid + delete. The reverse-charge column (expenses of VAT-registered
-// accounts only) adds one more - see columnCount below.
+// marker + chevron + select + name + category + invoice + method + payment
+// date + amount + paid + delete. The reverse-charge column (expenses of
+// VAT-registered accounts only) adds one more - see columnCount below.
 const BASE_COLUMN_COUNT = 11
 
-type SortKey =
-  | 'name'
-  | 'category'
-  | 'invoice_date'
-  | 'payment_method'
-  | 'payment_date'
-  | 'amount'
-  | 'paid'
+type SortKey = 'name' | 'category' | 'invoice_date' | 'payment_method' | 'payment_date' | 'amount' | 'paid'
 type SortDir = 'asc' | 'desc'
 type SortState = { key: SortKey; dir: SortDir } | null
 
-// Each dimension is 'any' (no constraint), 'none' (empty value), or a concrete
-// value. All active dimensions are ANDed together (and with the search term).
-type FilterState = {
-  category: 'any' | 'none' | number
-  method: 'any' | 'none' | PaymentMethod
-  paid: 'any' | 'paid' | 'unpaid'
-}
+// Each dimension is 'any' (no constraint), 'none' (empty value), or a
+// concrete value. Active dimensions are ANDed together, with the search term
+// and the incomplete toggle. Values are strings for the Selects.
+type FilterState = { category: string; method: string; paid: 'any' | 'paid' | 'unpaid' }
 const NO_FILTERS: FilterState = { category: 'any', method: 'any', paid: 'any' }
 
-// A FlowRead reduced to the editable FlowCreate payload the update endpoint
-// wants (full-replace semantics), so a single changed field can be merged on top.
-//
-// Lines are round-tripped through the same LinesEditor draft <-> payload pair
-// every editor uses (linesToDrafts / linesToPayload), rather than a hand-rolled
-// field list here. A hand-rolled list previously omitted ledger_account_id,
-// which meant every inline edit in this table (rename, dates, category,
-// payment method, paid, reverse-charge) silently unbooked every line on the
-// flow, since PATCH has full-replace semantics on the line set.
+// A FlowRead reduced to the full FlowCreate payload the update endpoint wants
+// (full-replace semantics), so a single changed field can be merged on top.
+// Lines round-trip through the LinesEditor draft <-> payload pair every
+// editor uses: a hand-rolled field list once dropped ledger_account_id, which
+// silently unbooked every line on each inline edit.
 function flowToPayload(flow: FlowRead): FlowCreate {
   return {
     name: flow.name,
@@ -82,15 +84,17 @@ function flowToPayload(flow: FlowRead): FlowCreate {
 
 interface FlowListProps {
   account: AccountRead
-  // The Revenues/Expenses tabs each render this component pinned to one kind.
+  // The revenus / dépenses pages each render this component pinned to one kind.
   kind: FlowKind
+  // Reports this kind's incomplete count after every load, for the sidebar badge.
+  onIncompleteCountChange?: (count: number) => void
 }
 
-export function FlowList({ account, kind }: FlowListProps) {
+export function FlowList({ account, kind, onIncompleteCountChange }: FlowListProps) {
   const [flows, setFlows] = useState<FlowRead[]>([])
   const [categories, setCategories] = useState<CategoryRead[]>([])
   const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountRead[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [search, setSearch] = useState('')
   // Missing a category, or holding a line booked to no ledger account.
@@ -105,53 +109,76 @@ export function FlowList({ account, kind }: FlowListProps) {
   // null = natural (server sort_key) order.
   const [sort, setSort] = useState<SortState>(null)
   const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
+  const [deleting, setDeleting] = useState<FlowRead | null>(null)
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false)
+  // Only the latest load may land (switching account quickly).
+  const requestSeq = useRef(0)
+  // What is shown right now. refresh() runs from callbacks that outlive the
+  // render that made them (after a save, a toggle, a delete), so it reads the
+  // account, the kind and the report callback here rather than from its
+  // closure; a late call loads and reports the current account, never the
+  // one it was created for.
+  const latest = useRef({ accountId: account.id, kind, report: onIncompleteCountChange })
+  useEffect(() => {
+    latest.current = { accountId: account.id, kind, report: onIncompleteCountChange }
+  })
 
   async function refresh() {
-    setLoading(true)
+    const seq = ++requestSeq.current
+    const { accountId, kind: kindToLoad } = latest.current
     try {
       const [fetchedFlows, fetchedCategories, fetchedLedgerAccounts] = await Promise.all([
-        listFlows(account.id, kind),
-        listCategories(account.id),
-        listLedgerAccounts(account.id),
+        listFlows(accountId, kindToLoad),
+        listCategories(accountId),
+        listLedgerAccounts(accountId),
       ])
+      if (seq !== requestSeq.current) return
       setFlows(fetchedFlows)
       setCategories(fetchedCategories)
       setLedgerAccounts(fetchedLedgerAccounts)
-    } finally {
-      setLoading(false)
+      setLoaded(true)
+      latest.current.report?.(fetchedFlows.filter(isFlowIncomplete).length)
+    } catch (err) {
+      if (seq === requestSeq.current) setError(`Les flux n’ont pas pu être chargés. ${frameError(err)}`)
     }
   }
 
   useEffect(() => {
+    setFlows([])
+    setLoaded(false)
     setSelected(new Set())
     setSearch('')
+    setOnlyIncomplete(false)
     setExpandedId(null)
     setSort(null)
     setAdding(false)
     setFilters(NO_FILTERS)
+    setError(null)
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id, kind])
 
-  const categoryName = (id: number | null) =>
-    id == null ? '' : (categories.find((c) => c.id === id)?.name ?? '')
+  const categoryName = (id: number | null) => (id == null ? '' : (categories.find((c) => c.id === id)?.name ?? ''))
 
   const term = search.trim().toLowerCase()
-  const activeFilterCount = Object.values(filters).filter((v) => v !== 'any').length
-  // Counted over every flow of this kind, not the filtered set, so the badge
-  // does not drop to zero the moment you switch the filter on.
+  const filtersActive =
+    term !== '' ||
+    onlyIncomplete ||
+    filters.category !== 'any' ||
+    filters.method !== 'any' ||
+    filters.paid !== 'any'
+  // Counted over every flow of this kind, not the filtered set, so the count
+  // does not drop to zero the moment the toggle is switched on.
   const incompleteCount = flows.filter(isFlowIncomplete).length
 
   const filtered = flows.filter((f) => {
-    if (term !== '' && !`${f.name} ${categoryName(f.category_id)}`.toLowerCase().includes(term)) {
-      return false
-    }
+    if (term !== '' && !`${f.name} ${categoryName(f.category_id)}`.toLowerCase().includes(term)) return false
     if (filters.category === 'none' && f.category_id !== null) return false
-    if (typeof filters.category === 'number' && f.category_id !== filters.category) return false
-    if (filters.method === 'none' && f.payment_method !== null) return false
-    if (filters.method !== 'any' && filters.method !== 'none' && f.payment_method !== filters.method) {
+    if (filters.category !== 'any' && filters.category !== 'none' && f.category_id !== Number(filters.category)) {
       return false
     }
+    if (filters.method === 'none' && f.payment_method !== null) return false
+    if (filters.method !== 'any' && filters.method !== 'none' && f.payment_method !== filters.method) return false
     if (filters.paid === 'paid' && !f.paid) return false
     if (filters.paid === 'unpaid' && f.paid) return false
     if (onlyIncomplete && !isFlowIncomplete(f)) return false
@@ -161,17 +188,15 @@ export function FlowList({ account, kind }: FlowListProps) {
   function compareBy(a: FlowRead, b: FlowRead, key: SortKey): number {
     switch (key) {
       case 'name':
-        return a.name.localeCompare(b.name)
+        return a.name.localeCompare(b.name, 'fr')
       case 'category':
-        return categoryName(a.category_id).localeCompare(categoryName(b.category_id))
+        return categoryName(a.category_id).localeCompare(categoryName(b.category_id), 'fr')
       case 'invoice_date':
         return a.invoice_date.localeCompare(b.invoice_date)
       case 'payment_method':
         return (a.payment_method ?? '').localeCompare(b.payment_method ?? '')
       case 'payment_date': {
-        // Explicit null handling: undated flows sort last (ascending). A "~"
-        // sentinel + localeCompare doesn't work - locale collation orders
-        // punctuation before digits, putting nulls first.
+        // Explicit null handling: undated flows sort last (ascending).
         if (a.payment_date === b.payment_date) return 0
         if (a.payment_date === null) return 1
         if (b.payment_date === null) return -1
@@ -184,8 +209,8 @@ export function FlowList({ account, kind }: FlowListProps) {
     }
   }
 
-  // Sorting is applied to a copy so the fetched (server sort_key) order is
-  // preserved as the "natural" state to return to.
+  // Sorting works on a copy so the fetched (server sort_key) order stays the
+  // "natural" state to return to.
   const rows = sort
     ? [...filtered].sort((a, b) => {
         const c = compareBy(a, b, sort.key)
@@ -193,11 +218,12 @@ export function FlowList({ account, kind }: FlowListProps) {
       })
     : filtered
 
+  // asc, then desc, then back to the natural order.
   function toggleSort(key: SortKey) {
     setSort((prev) => {
       if (!prev || prev.key !== key) return { key, dir: 'asc' }
       if (prev.dir === 'asc') return { key, dir: 'desc' }
-      return null // third click clears back to natural order
+      return null
     })
   }
 
@@ -205,16 +231,16 @@ export function FlowList({ account, kind }: FlowListProps) {
     const active = sort?.key === key
     return (
       <TableHead
-        className={align === 'right' ? 'text-right' : undefined}
-        aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={cn(HEAD, align === 'right' && 'text-right')}
+        aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
       >
         <button
           type="button"
-          className={align === 'right' ? 'sort-header sort-header-right' : 'sort-header'}
           onClick={() => toggleSort(key)}
+          className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit uppercase [font:inherit] tracking-[inherit] transition-colors hover:text-fg-accent"
         >
           {label}
-          <span className="sort-indicator">{active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+          <Icon icon={active ? (sort.dir === 'asc' ? ArrowUp : ArrowDown) : ChevronsUpDown} size={11} />
         </button>
       </TableHead>
     )
@@ -249,10 +275,9 @@ export function FlowList({ account, kind }: FlowListProps) {
     try {
       await updateFlow(account.id, flow.id, { ...flowToPayload(flow), ...changes })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      setError(`« ${flow.name} » n’a pas été enregistré. ${frameError(err)}`)
     } finally {
-      // On success this reflects the new value; on failure it reverts the row's
-      // drafts to server state.
+      // On success this shows the new value; on failure it reverts the row.
       await refresh()
     }
   }
@@ -262,37 +287,29 @@ export function FlowList({ account, kind }: FlowListProps) {
     try {
       await setFlowPaid(account.id, flow.id, !flow.paid)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      setError(`Le statut de « ${flow.name} » n’a pas été modifié. ${frameError(err)}`)
     } finally {
       await refresh()
     }
   }
 
-  async function deleteRow(flow: FlowRead) {
-    if (!confirm(`Delete “${flow.name}”?`)) return
-    setError(null)
-    try {
-      await deleteFlow(account.id, flow.id)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete')
-    }
-  }
-
   async function createDraft(payload: FlowCreate) {
     setError(null)
-    // Let NewFlowRow surface failures (keeps the draft open) by rethrowing.
+    // NewFlowRow shows failures itself (and keeps the draft) when this rejects.
     const created = await createFlow(account.id, payload)
     setAdding(false)
+    toast('Flux ajouté.', { tone: 'positive' })
     await refresh()
-    // Open the new row so the amount lines can be entered right away.
+    // Open the new row so its amount lines can be entered right away.
     setExpandedId(created.id)
   }
 
   async function runBulk(payload: Omit<FlowBulkUpdate, 'flow_ids'>) {
+    const n = visibleSelectedIds.length
     await bulkUpdateFlows(account.id, { flow_ids: visibleSelectedIds, ...payload })
     setBulkOpen(false)
     setSelected(new Set())
+    toast(`${countLabel(n, 'flux modifié', 'flux modifiés')}.`, { tone: 'positive' })
     await refresh()
   }
 
@@ -301,308 +318,211 @@ export function FlowList({ account, kind }: FlowListProps) {
     try {
       await runBulk({ paid })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Bulk update failed')
+      setError(`La sélection n’a pas été modifiée. ${frameError(err)}`)
     }
   }
 
-  async function bulkDelete() {
-    const n = visibleSelectedIds.length
-    if (!confirm(`Delete ${n} selected flow${n === 1 ? '' : 's'}? This cannot be undone.`)) return
-    setError(null)
-    try {
-      await bulkDeleteFlows(account.id, visibleSelectedIds)
-      setSelected(new Set())
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Bulk delete failed')
-    }
-  }
-
-  const kindLabel = FLOW_KIND_LABELS[kind]
-  const kindLower = kindLabel.toLowerCase()
+  const kindTitle = kind === 'revenue' ? 'Revenus' : 'Dépenses'
   const hasSelection = visibleSelectedIds.length > 0
-  // Reverse charge (autoliquidation) is a purchase concept, and only relevant
-  // for VAT-registered accounts - so the column exists on the Expenses tab only.
+  // Reverse charge (autoliquidation) is a purchase concept, only relevant for
+  // VAT-registered accounts - so the column exists on dépenses only.
   const showReverseCharge = kind === 'expense' && account.vat_applicable
   const columnCount = BASE_COLUMN_COUNT + (showReverseCharge ? 1 : 0)
 
   return (
-    <div className="flows-view">
-      <div className="flows-toolbar">
-        <div className="flows-toolbar-row">
-          <div className="flow-search-wrap">
-            <Search className="flow-search-icon" aria-hidden />
-            <input
-              type="search"
-              className="flow-search-input"
-              placeholder="Search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search flows"
-            />
-          </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={kindTitle}
+        actions={
+          <>
+            <Button variant="secondary" iconLeft={Sparkles} onClick={() => setGenerating(true)}>
+              Générer
+            </Button>
+            <Button iconLeft={Plus} onClick={() => setAdding(true)} disabled={!loaded}>
+              Ajouter un flux
+            </Button>
+          </>
+        }
+      />
 
-          <div className="flows-toolbar-actions">
-            <button
-              type="button"
-              className={onlyIncomplete ? 'toolbar-btn is-active' : 'toolbar-btn'}
-              onClick={() => setOnlyIncomplete((v) => !v)}
-              aria-pressed={onlyIncomplete}
-              title="Flows missing a category, or with a line booked to no ledger account"
-            >
-              <TriangleAlert className="toolbar-btn-icon" aria-hidden /> Incomplete
-              {incompleteCount > 0 && <span className="toolbar-btn-count">{incompleteCount}</span>}
-            </button>
-
-            <Popover
-              align="right"
-              triggerClassName={activeFilterCount > 0 ? 'toolbar-btn is-active' : 'toolbar-btn'}
-              trigger={
-                <>
-                  <ListFilter className="toolbar-btn-icon" aria-hidden />
-                  Filter
-                  {activeFilterCount > 0 && <span className="toolbar-badge">{activeFilterCount}</span>}
-                </>
-              }
-            >
-              <div className="filter-panel">
-                <div className="popover-title">Filters</div>
-                <label className="filter-field">
-                  <span>Category</span>
-                  <select
-                    value={typeof filters.category === 'number' ? String(filters.category) : filters.category}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setFilters((f) => ({ ...f, category: v === 'any' || v === 'none' ? v : Number(v) }))
-                    }}
-                  >
-                    <option value="any">Any</option>
-                    <option value="none">No category</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="filter-field">
-                  <span>Payment method</span>
-                  <select
-                    value={filters.method}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, method: e.target.value as FilterState['method'] }))
-                    }
-                  >
-                    <option value="any">Any</option>
-                    <option value="none">No payment</option>
-                    {PAYMENT_METHODS.map((m) => (
-                      <option key={m} value={m}>
-                        {PAYMENT_METHOD_LABELS[m]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="filter-field">
-                  <span>Paid</span>
-                  <select
-                    value={filters.paid}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, paid: e.target.value as FilterState['paid'] }))
-                    }
-                  >
-                    <option value="any">Any</option>
-                    <option value="paid">Paid</option>
-                    <option value="unpaid">Unpaid</option>
-                  </select>
-                </label>
-                <div className="popover-footer">
-                  <button
-                    type="button"
-                    className="btn-link"
-                    disabled={activeFilterCount === 0}
-                    onClick={() => setFilters(NO_FILTERS)}
-                  >
-                    Clear all
-                  </button>
-                </div>
-              </div>
-            </Popover>
-
-            <Popover
-              align="right"
-              triggerClassName="toolbar-btn toolbar-btn-square"
-              triggerLabel="Bulk actions"
-              trigger={
-                <>
-                  <MoreHorizontal className="toolbar-btn-icon" aria-hidden />
-                  {hasSelection && <span className="toolbar-badge">{visibleSelectedIds.length}</span>}
-                </>
-              }
-            >
-              {(close) => (
-                <div className="menu">
-                  <div className="popover-title">
-                    {hasSelection ? `${visibleSelectedIds.length} selected` : 'No rows selected'}
-                  </div>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    disabled={!hasSelection}
-                    onClick={() => {
-                      close()
-                      quickSetPaid(true)
-                    }}
-                  >
-                    Mark paid
-                  </button>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    disabled={!hasSelection}
-                    onClick={() => {
-                      close()
-                      quickSetPaid(false)
-                    }}
-                  >
-                    Mark unpaid
-                  </button>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    disabled={!hasSelection}
-                    onClick={() => {
-                      close()
-                      setBulkOpen(true)
-                    }}
-                  >
-                    Edit fields…
-                  </button>
-                  <button
-                    type="button"
-                    className="menu-item menu-item-danger"
-                    disabled={!hasSelection}
-                    onClick={() => {
-                      close()
-                      bulkDelete()
-                    }}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    disabled={!hasSelection}
-                    onClick={() => {
-                      close()
-                      setSelected(new Set())
-                    }}
-                  >
-                    Clear selection
-                  </button>
-                </div>
-              )}
-            </Popover>
-
-            <button className="btn-secondary" onClick={() => setGenerating(true)}>
-              <Sparkles className="toolbar-btn-icon" aria-hidden /> Generate
-            </button>
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          size="sm"
+          icon={Search}
+          aria-label="Rechercher un flux"
+          placeholder="Rechercher un flux"
+          className="w-60"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Select
+          size="sm"
+          aria-label="Filtrer par catégorie"
+          className="w-48"
+          value={filters.category}
+          onValueChange={(value) => setFilters((f) => ({ ...f, category: value }))}
+          options={[
+            { value: 'any', label: 'Toutes catégories' },
+            { value: 'none', label: 'Sans catégorie' },
+            ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+          ]}
+        />
+        <Select
+          size="sm"
+          aria-label="Filtrer par moyen de paiement"
+          className="w-44"
+          value={filters.method}
+          onValueChange={(value) => setFilters((f) => ({ ...f, method: value }))}
+          options={[
+            { value: 'any', label: 'Tous moyens' },
+            { value: 'none', label: 'Sans paiement' },
+            ...PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABELS[m] })),
+          ]}
+        />
+        <Select
+          size="sm"
+          aria-label="Filtrer par statut de paiement"
+          className="w-40"
+          value={filters.paid}
+          onValueChange={(value) => setFilters((f) => ({ ...f, paid: value as FilterState['paid'] }))}
+          options={[
+            { value: 'any', label: 'Payés et à payer' },
+            { value: 'paid', label: 'Payés' },
+            { value: 'unpaid', label: 'À payer' },
+          ]}
+        />
+        <Tag selected={onlyIncomplete} onClick={() => setOnlyIncomplete((v) => !v)}>
+          {/* One inline run: the Tag lays its children out as flex items, which drop a bare space. */}
+          <span>
+            incomplets <span className="numeric">{incompleteCount}</span>
+          </span>
+        </Tag>
+        {filtersActive && (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconLeft={RotateCcw}
+            onClick={() => {
+              setSearch('')
+              setOnlyIncomplete(false)
+              setFilters(NO_FILTERS)
+            }}
+          >
+            Réinitialiser
+          </Button>
+        )}
       </div>
 
-      {loading && flows.length === 0 && <p className="empty-state">Loading…</p>}
-
-      {/* Kept mounted through refreshes (loading flips true briefly on every
-          inline edit) so scroll position and focus survive. */}
-      {(flows.length > 0 || adding || !loading) && (
-        <div className="flows-table-region">
-          <div className="table-wrap">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="flow-flag-cell" />
-                  <TableHead className="flow-expand-cell" />
-                  <TableHead>
-                    <Checkbox
-                      checked={
-                        allFilteredSelected
-                          ? true
-                          : someFilteredSelected
-                            ? 'indeterminate'
-                            : false
-                      }
-                      onCheckedChange={(v) => toggleSelectAll(v === true)}
-                      aria-label="Select all"
-                    />
-                  </TableHead>
-                  {sortableHead('name', 'Name')}
-                  {sortableHead('category', 'Category')}
-                  {sortableHead('invoice_date', 'Invoice date')}
-                  {sortableHead('payment_method', 'Payment method')}
-                  {sortableHead('payment_date', 'Payment date')}
-                  {sortableHead('amount', 'Amount', 'right')}
-                  {showReverseCharge && (
-                    <TableHead className="text-center" title="Reverse charge (autoliquidation)">
-                      RC
-                    </TableHead>
-                  )}
-                  {sortableHead('paid', 'Paid', 'right')}
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((flow) => (
-                  <FlowRow
-                    key={flow.id}
-                    flow={flow}
-                    kind={kind}
-                    account={account}
-                    categories={categories}
-                    ledgerAccounts={ledgerAccounts}
-                    colSpan={columnCount}
-                    showReverseCharge={showReverseCharge}
-                    selected={selected.has(flow.id)}
-                    onSelectedChange={(checked) => toggleSelected(flow.id, checked)}
-                    expanded={expandedId === flow.id}
-                    onToggleExpanded={() =>
-                      setExpandedId((prev) => (prev === flow.id ? null : flow.id))
-                    }
-                    onCommit={(changes) => commitFlow(flow, changes)}
-                    onTogglePaid={() => togglePaid(flow)}
-                    onDelete={() => deleteRow(flow)}
-                  />
-                ))}
-                {adding && (
-                  <NewFlowRow
-                    kind={kind}
-                    account={account}
-                    categories={categories}
-                    showReverseCharge={showReverseCharge}
-                    onCancel={() => setAdding(false)}
-                    onCreate={createDraft}
-                  />
-                )}
-                {rows.length === 0 && !adding && (
-                  <TableRow className="hover:bg-transparent">
-                    <td colSpan={columnCount} className="text-muted-foreground h-16 text-center">
-                      {flows.length === 0
-                        ? `No ${kindLower} flows yet.`
-                        : 'No flows match your search or filters.'}
-                    </td>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Sticky to the viewport bottom so it's always reachable. */}
-          <button type="button" className="flow-newentry" onClick={() => setAdding(true)}>
-            <Plus className="flow-newentry-icon" aria-hidden /> New entry
-          </button>
+      {hasSelection && (
+        <div className="flex flex-wrap items-center gap-1 rounded-md border border-line-hairline bg-surface-sunken px-3 py-2">
+          <span className="mr-2 type-label text-fg-strong">
+            {countLabel(visibleSelectedIds.length, 'sélectionné', 'sélectionnés')}
+          </span>
+          <Button variant="ghost" size="sm" iconLeft={Check} onClick={() => quickSetPaid(true)}>
+            Marquer payé
+          </Button>
+          <Button variant="ghost" size="sm" iconLeft={Undo2} onClick={() => quickSetPaid(false)}>
+            Marquer impayé
+          </Button>
+          <Button variant="ghost" size="sm" iconLeft={Pencil} onClick={() => setBulkOpen(true)}>
+            Modifier…
+          </Button>
+          <Button variant="ghost" size="sm" iconLeft={Trash2} onClick={() => setConfirmingBulkDelete(true)}>
+            Supprimer
+          </Button>
+          <Button variant="ghost" size="sm" iconLeft={X} onClick={() => setSelected(new Set())}>
+            Annuler
+          </Button>
         </div>
       )}
 
-      {error && <p className="form-error">{error}</p>}
+      {error && (
+        <Callout tone="negative" title="Action impossible">
+          {error}
+        </Callout>
+      )}
+
+      {!loaded && !error && <p className="type-body-sm text-fg-muted">Chargement…</p>}
+
+      {/* Kept mounted through refreshes (every inline edit refetches) so
+          scroll position and focus survive. */}
+      {loaded && (
+        <Card padding={false}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className={cn(HEAD, 'w-7 pr-0')}>
+                  <span className="sr-only">Incomplet</span>
+                </TableHead>
+                <TableHead className={cn(HEAD, 'w-8 px-0')}>
+                  <span className="sr-only">Lignes</span>
+                </TableHead>
+                <TableHead className={cn(HEAD, 'w-8')}>
+                  <Checkbox
+                    checked={allFilteredSelected ? true : someFilteredSelected ? 'indeterminate' : false}
+                    onCheckedChange={(v) => toggleSelectAll(v === true)}
+                    aria-label="Tout sélectionner"
+                  />
+                </TableHead>
+                {sortableHead('name', 'nom')}
+                {sortableHead('category', 'catégorie')}
+                {sortableHead('invoice_date', 'date de facture')}
+                {sortableHead('payment_method', 'moyen de paiement')}
+                {sortableHead('payment_date', 'date de paiement')}
+                {sortableHead('amount', 'montant', 'right')}
+                {showReverseCharge && <TableHead className={cn(HEAD, 'text-center')}>autoliquidation</TableHead>}
+                {sortableHead('paid', 'payé')}
+                <TableHead className={HEAD}>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((flow) => (
+                <FlowRow
+                  key={flow.id}
+                  flow={flow}
+                  kind={kind}
+                  account={account}
+                  categories={categories}
+                  ledgerAccounts={ledgerAccounts}
+                  colSpan={columnCount}
+                  showReverseCharge={showReverseCharge}
+                  selected={selected.has(flow.id)}
+                  onSelectedChange={(checked) => toggleSelected(flow.id, checked)}
+                  expanded={expandedId === flow.id}
+                  onToggleExpanded={() => setExpandedId((prev) => (prev === flow.id ? null : flow.id))}
+                  onCommit={(changes) => commitFlow(flow, changes)}
+                  onTogglePaid={() => togglePaid(flow)}
+                  onDelete={() => setDeleting(flow)}
+                />
+              ))}
+              {adding && (
+                <NewFlowRow
+                  kind={kind}
+                  account={account}
+                  categories={categories}
+                  colSpan={columnCount}
+                  showReverseCharge={showReverseCharge}
+                  onCancel={() => setAdding(false)}
+                  onCreate={createDraft}
+                />
+              )}
+              {rows.length === 0 && !adding && (
+                <TableRow>
+                  <TableCell colSpan={columnCount} className={cn(CELL, 'py-10 text-center text-fg-muted')}>
+                    {flows.length === 0
+                      ? kind === 'revenue'
+                        ? 'Aucun revenu pour l’instant.'
+                        : 'Aucune dépense pour l’instant.'
+                      : 'Aucun flux ne correspond à ces filtres.'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
 
       {generating && (
         <FlowGenerator
@@ -626,6 +546,36 @@ export function FlowList({ account, kind }: FlowListProps) {
           showReverseCharge={showReverseCharge}
           onCancel={() => setBulkOpen(false)}
           onApply={runBulk}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title="Supprimer ce flux ?"
+          description={`« ${deleting.name} » sera supprimé définitivement.`}
+          confirmLabel="Supprimer le flux"
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await deleteFlow(account.id, deleting.id)
+            toast('Flux supprimé.', { tone: 'positive' })
+            await refresh()
+          }}
+        />
+      )}
+
+      {confirmingBulkDelete && (
+        <ConfirmDialog
+          title={`Supprimer ${countLabel(visibleSelectedIds.length, 'flux', 'flux')} ?`}
+          description="Les flux sélectionnés seront supprimés définitivement."
+          confirmLabel="Supprimer"
+          onClose={() => setConfirmingBulkDelete(false)}
+          onConfirm={async () => {
+            const n = visibleSelectedIds.length
+            await bulkDeleteFlows(account.id, visibleSelectedIds)
+            setSelected(new Set())
+            toast(`${countLabel(n, 'flux supprimé', 'flux supprimés')}.`, { tone: 'positive' })
+            await refresh()
+          }}
         />
       )}
     </div>

@@ -1,54 +1,62 @@
 import { useState } from 'react'
+import { Check, X } from 'lucide-react'
+import { Badge, Checkbox, IconButton, Input, Select, cn } from '@qvanderlinden/ui'
+import { TableCell, TableRow } from '@qvanderlinden/ui/primitives'
 import type { AccountRead, CategoryRead, FlowCreate, FlowKind, PaymentMethod } from '../api/types'
 import { PAYMENT_METHOD_LABELS, todayDateInputValue } from '../accountingDisplay'
+import { frameError } from '../errors'
+import { CELL, CELL_CONTROL } from './editableTable'
 import { PAYMENT_METHODS } from './FlowForm'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { TableCell, TableRow } from '@/components/ui/table'
+
+// Radix Select values can't be empty strings; this stands for "none".
+const NONE = 'none'
 
 interface NewFlowRowProps {
   kind: FlowKind
   account: AccountRead
   categories: CategoryRead[]
-  // Whether the reverse-charge (autoliquidation) checkbox column is shown.
+  colSpan: number
+  // Whether the reverse-charge (autoliquidation) column is shown.
   showReverseCharge: boolean
   onCancel: () => void
-  // Persists the draft (parent POSTs, then opens the new row for line entry).
-  // Rejects on failure so the draft stays put with its error shown.
+  // Persists the draft (the parent POSTs, then opens the new row for line
+  // entry). Rejects on failure so the draft stays put with its error shown.
   onCreate: (payload: FlowCreate) => Promise<void>
 }
 
-// An unsaved flow rendered as an inline table row (added via the header's "Add"
-// button). Header fields are entered here; amount lines are added after saving,
-// by expanding the created row.
+// The quick-add row at the bottom of the flows table. Header fields are
+// entered here; amount lines are added after saving, in the expanded row.
+// Enter in a field saves, Escape cancels.
 export function NewFlowRow({
   kind,
   account,
   categories,
+  colSpan,
   showReverseCharge,
   onCancel,
   onCreate,
 }: NewFlowRowProps) {
   const [name, setName] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const [categoryId, setCategoryId] = useState(NONE)
   const [invoiceDate, setInvoiceDate] = useState(todayDateInputValue())
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState(NONE)
   const [paymentDate, setPaymentDate] = useState('')
   const [paid, setPaid] = useState(false)
   const [reverseCharge, setReverseCharge] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const noPayment = paymentMethod === ''
+  const noPayment = paymentMethod === NONE
   const isVisa = paymentMethod === 'visa'
 
   async function save() {
+    if (saving) return
     if (name.trim() === '') {
-      setError('Name is required')
+      setError('Le nom est obligatoire.')
       return
     }
     if (invoiceDate === '') {
-      setError('Invoice date is required')
+      setError('La date de facture est obligatoire.')
       return
     }
     setSaving(true)
@@ -57,7 +65,7 @@ export function NewFlowRow({
       await onCreate({
         name: name.trim(),
         kind,
-        category_id: categoryId === '' ? null : Number(categoryId),
+        category_id: categoryId === NONE ? null : Number(categoryId),
         invoice_date: invoiceDate,
         payment_method: noPayment ? null : (paymentMethod as PaymentMethod),
         payment_date: noPayment || isVisa ? null : paymentDate || null,
@@ -66,124 +74,137 @@ export function NewFlowRow({
         lines: [],
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add')
+      setError(`Le flux n’a pas été ajouté. ${frameError(err)}`)
       setSaving(false)
     }
   }
 
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
+  function onKeyDown(e: React.KeyboardEvent<HTMLTableRowElement>) {
+    // Keys pressed in an open Select's list (rendered in a portal) still
+    // bubble here through React; only keys from the row's own fields count.
+    const target = e.target as HTMLElement
+    if (!e.currentTarget.contains(target)) return
+    if (e.key === 'Enter' && target.tagName === 'INPUT') {
       e.preventDefault()
       save()
     } else if (e.key === 'Escape') {
+      e.preventDefault()
       onCancel()
     }
   }
 
   return (
-    <TableRow className="flow-draft-row hover:bg-transparent" onKeyDown={onKeyDown}>
-      <TableCell className="flow-expand-cell" />
-      <TableCell />
-      <TableCell>
-        <input
-          type="text"
-          className="cell-input cell-input-name"
-          placeholder={`New ${kind}…`}
-          value={name}
-          autoFocus
-          onChange={(e) => setName(e.target.value)}
-          aria-label="Name"
-        />
-      </TableCell>
-      <TableCell>
-        <select
-          className="cell-input"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          aria-label="Category"
-        >
-          <option value="">— None —</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </TableCell>
-      <TableCell>
-        <input
-          type="date"
-          className="cell-input"
-          value={invoiceDate}
-          onChange={(e) => setInvoiceDate(e.target.value)}
-          aria-label="Invoice date"
-        />
-      </TableCell>
-      <TableCell>
-        <select
-          className="cell-input"
-          value={paymentMethod}
-          onChange={(e) => {
-            setPaymentMethod(e.target.value)
-            if (e.target.value === '' || e.target.value === 'visa') setPaymentDate('')
-          }}
-          aria-label="Payment method"
-        >
-          <option value="">No payment</option>
-          {PAYMENT_METHODS.map((m) => (
-            <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
-              {PAYMENT_METHOD_LABELS[m]}
-            </option>
-          ))}
-        </select>
-      </TableCell>
-      <TableCell>
-        <input
-          type="date"
-          className="cell-input"
-          value={paymentDate}
-          disabled={noPayment || isVisa}
-          title={isVisa ? "Visa flows use the account's Visa payment day, not a stored date" : undefined}
-          onChange={(e) => setPaymentDate(e.target.value)}
-          aria-label="Payment date"
-        />
-      </TableCell>
-      <TableCell>
-        <div className="text-right text-muted-foreground">—</div>
-      </TableCell>
-      {showReverseCharge && (
-        <TableCell>
-          <div className="flex justify-center">
+    <>
+      <TableRow className="bg-surface-selected hover:bg-surface-selected" onKeyDown={onKeyDown}>
+        <TableCell className={CELL} />
+        <TableCell className={CELL} />
+        <TableCell className={CELL} />
+        <TableCell className={CELL}>
+          <Input
+            size="sm"
+            aria-label="Nom"
+            className={cn(CELL_CONTROL, 'min-w-48 font-medium')}
+            placeholder={kind === 'revenue' ? 'Nouveau revenu…' : 'Nouvelle dépense…'}
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
+        </TableCell>
+        <TableCell className={CELL}>
+          <Select
+            size="sm"
+            aria-label="Catégorie"
+            className={cn(CELL_CONTROL, 'min-w-36')}
+            value={categoryId}
+            onValueChange={setCategoryId}
+            options={[
+              { value: NONE, label: 'Aucune' },
+              ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+            ]}
+          />
+        </TableCell>
+        <TableCell className={CELL}>
+          <Input
+            size="sm"
+            type="date"
+            aria-label="Date de facture"
+            className={CELL_CONTROL}
+            value={invoiceDate}
+            onChange={(e) => setInvoiceDate(e.target.value)}
+          />
+        </TableCell>
+        <TableCell className={CELL}>
+          <Select
+            size="sm"
+            aria-label="Moyen de paiement"
+            className={cn(CELL_CONTROL, 'min-w-36')}
+            value={paymentMethod}
+            onValueChange={(value) => {
+              setPaymentMethod(value)
+              if (value === NONE || value === 'visa') setPaymentDate('')
+            }}
+            options={[
+              { value: NONE, label: 'Sans paiement' },
+              ...PAYMENT_METHODS.map((m) => ({
+                value: m,
+                label: PAYMENT_METHOD_LABELS[m],
+                disabled: m === 'visa' && account.visa_payment_day == null,
+              })),
+            ]}
+          />
+        </TableCell>
+        <TableCell className={CELL}>
+          {noPayment || isVisa ? (
+            <span className="px-2.5 text-fg-subtle">
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">
+                {isVisa ? 'Date calculée selon le cycle Visa du compte' : 'Aucune date de paiement'}
+              </span>
+            </span>
+          ) : (
+            <Input
+              size="sm"
+              type="date"
+              aria-label="Date de paiement"
+              className={CELL_CONTROL}
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+            />
+          )}
+        </TableCell>
+        <TableCell className={cn(CELL, 'text-right type-body-sm text-fg-subtle')}>lignes après ajout</TableCell>
+        {showReverseCharge && (
+          <TableCell className={cn(CELL, 'text-center')}>
             <Checkbox
               checked={reverseCharge}
               onCheckedChange={(v) => setReverseCharge(v === true)}
-              aria-label="Reverse charge"
+              aria-label="Autoliquidation"
             />
+          </TableCell>
+        )}
+        <TableCell className={CELL}>
+          <Badge asChild tone={paid ? 'positive' : 'warning'}>
+            <button type="button" className="cursor-pointer" onClick={() => setPaid((p) => !p)}>
+              {paid ? 'payé' : 'à payer'}
+            </button>
+          </Badge>
+        </TableCell>
+        <TableCell className={cn(CELL, 'text-right')}>
+          <div className="flex justify-end gap-1">
+            <IconButton size="sm" icon={Check} label="Enregistrer le flux" onClick={save} disabled={saving} />
+            <IconButton size="sm" icon={X} label="Annuler" onClick={onCancel} disabled={saving} />
           </div>
         </TableCell>
+      </TableRow>
+      {error && (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={colSpan} className="px-4 py-2">
+            <p role="alert" className="type-body-sm text-negative-fg">
+              {error}
+            </p>
+          </TableCell>
+        </TableRow>
       )}
-      <TableCell>
-        <div className="text-right">
-          <button
-            type="button"
-            className={paid ? 'paid-toggle paid' : 'paid-toggle'}
-            onClick={() => setPaid((p) => !p)}
-          >
-            {paid ? 'Paid ✓' : 'Mark paid'}
-          </button>
-        </div>
-      </TableCell>
-      <TableCell>
-        <div className="flow-draft-actions">
-          <Button size="sm" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onCancel} disabled={saving} aria-label="Cancel">
-            ✕
-          </Button>
-        </div>
-        {error && <p className="flow-draft-error">{error}</p>}
-      </TableCell>
-    </TableRow>
+    </>
   )
 }

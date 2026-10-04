@@ -143,11 +143,10 @@ export function isFlowIncomplete(flow: FlowRead): boolean {
 export function flowGapsSummary(flow: FlowRead): string {
   const gaps = flowGaps(flow)
   const parts: string[] = []
-  if (gaps.noCategory) parts.push('No category')
+  if (gaps.noCategory) parts.push('sans catégorie')
   if (gaps.unbooked > 0) {
-    parts.push(
-      `${gaps.unbooked} of ${gaps.lineCount} ${gaps.lineCount === 1 ? 'line' : 'lines'} unbooked`,
-    )
+    const s = gaps.unbooked > 1 ? 's' : ''
+    parts.push(`${gaps.unbooked} ligne${s} sur ${gaps.lineCount} non imputée${s}`)
   }
-  return parts.join('; ')
+  return parts.join(' ; ')
 }

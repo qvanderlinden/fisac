@@ -165,6 +165,16 @@ export default function App() {
     setAccountDialog(null)
   }
 
+  // A list reports its own count after each load, keeping the badge in step
+  // with edits. It applies only to the account it was counted for: a report
+  // that arrives after the account changed must not touch another account's
+  // numbers (the recount above supplies those).
+  function reportIncomplete(accountId: number, kind: FlowKind, count: number) {
+    setCounted((c) =>
+      c !== null && c.accountId === accountId ? { ...c, counts: { ...c.counts, [kind]: count } } : c,
+    )
+  }
+
   function incompleteCount(value: Tab): number {
     return value === 'revenues' ? incomplete.revenue : value === 'expenses' ? incomplete.expense : 0
   }
@@ -271,10 +281,18 @@ export default function App() {
             />
           )}
           {!loading && selectedAccount !== null && tab === 'revenues' && (
-            <FlowList account={selectedAccount} kind="revenue" />
+            <FlowList
+              account={selectedAccount}
+              kind="revenue"
+              onIncompleteCountChange={(n) => reportIncomplete(selectedAccount.id, 'revenue', n)}
+            />
           )}
           {!loading && selectedAccount !== null && tab === 'expenses' && (
-            <FlowList account={selectedAccount} kind="expense" />
+            <FlowList
+              account={selectedAccount}
+              kind="expense"
+              onIncompleteCountChange={(n) => reportIncomplete(selectedAccount.id, 'expense', n)}
+            />
           )}
           {!loading && selectedAccount !== null && tab === 'projection' && (
             <ProjectionView account={selectedAccount} onAccountChange={replaceAccount} />
