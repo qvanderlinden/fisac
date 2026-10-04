@@ -1,185 +1,323 @@
-import { useEffect, useState } from 'react'
-import {
-  createLedgerAccount,
-  deleteLedgerAccount,
-  listLedgerAccounts,
-  updateLedgerAccount,
-} from '../api/client'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
+import { Button, Callout, Card, IconButton, Input, Tag, cn, toast } from '@qvanderlinden/ui'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
+import { createLedgerAccount, deleteLedgerAccount, listLedgerAccounts, updateLedgerAccount } from '../api/client'
 import type { LedgerAccountRead } from '../api/types'
+import { frameError, httpStatus } from '../errors'
+import { ConfirmDialog } from './ConfirmDialog'
+import { CELL, CELL_CONTROL, HEAD, ROW } from './editableTable'
+import { classTag, codeHint as codeHintFor, CLASS_LABELS, isValidCode } from './ledgerCode'
+import { PageHeader } from './PageHeader'
 
 interface LedgerAccountsViewProps {
   accountId: number
 }
 
-// Belgian PCMN. Only 6 and 7 are meaningful for flow lines, but the whole
-// chart is definable - see the schema design doc.
-const CLASS_LABELS: Record<number, string> = {
-  1: 'Capitaux propres',
-  2: 'Immobilisés',
-  3: 'Stocks',
-  4: 'Créances et dettes',
-  5: 'Trésorerie',
-  6: 'Charges',
-  7: 'Produits',
+// code + class + name + delete
+const COLUMN_COUNT = 4
+
+const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
+
+const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key === 'Enter') e.currentTarget.blur()
 }
 
-// Mirrors the backend's _LEDGER_CODE and the database's two check
-// constraints, so a bad code is caught before a round trip.
-const CODE_PATTERN = /^[1-7][0-9]*$/
-
-// One row's name is inline-editable. Local draft is seeded from the fetched
-// ledger account and committed on blur only when it actually changed (a
-// rejected commit reverts via the refresh that follows) - mirrors
-// CategoriesView's CategoryRow/commitName.
+// One row: the name is editable in place, committed on blur or Enter only
+// when it changed. A rejected commit puts the saved name back.
 function LedgerRow({
   row,
   onRename,
   onDelete,
 }: {
   row: LedgerAccountRead
-  onRename: (name: string) => Promise<void>
-  onDelete: () => Promise<void>
+  // Resolves to whether the server accepted the new name.
+  onRename: (name: string) => Promise<boolean>
+  onDelete: () => void
 }) {
   const [name, setName] = useState(row.name)
 
+  // Keyed on the saved name, not the object: a refresh hands this row a new
+  // object with the same values and must not wipe what is being typed.
   useEffect(() => {
     setName(row.name)
-  }, [row])
+  }, [row.name])
 
-  function commitName() {
+  async function commitName() {
     const trimmed = name.trim()
     if (trimmed === '' || trimmed === row.name) {
       setName(row.name)
       return
     }
-    onRename(trimmed)
+    if (!(await onRename(trimmed))) setName(row.name)
   }
 
   return (
-    <div className="ledger-row">
-      <span className="ledger-code">{row.code}</span>
-      <span className="ledger-class-badge">
-        {row.pcmn_class} {CLASS_LABELS[row.pcmn_class]}
-      </span>
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={commitName}
-        aria-label={`Name of ${row.code}`}
-      />
-      <button type="button" className="line-remove" onClick={onDelete} aria-label={`Delete ${row.code}`}>
-        ×
-      </button>
-    </div>
+    <TableRow className={ROW}>
+      <TableCell className={cn(CELL, 'numeric text-fg-strong')}>{row.code}</TableCell>
+      <TableCell className={CELL}>
+        <Tag>
+          {row.pcmn_class} {CLASS_LABELS[row.pcmn_class]}
+        </Tag>
+      </TableCell>
+      <TableCell className={CELL}>
+        <Input
+          size="sm"
+          aria-label={`Nom du compte ${row.code}`}
+          className={cn(CELL_CONTROL, 'min-w-48')}
+          maxLength={200}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={blurOnEnter}
+        />
+      </TableCell>
+      <TableCell className={cn(CELL, 'text-right')}>
+        <IconButton size="sm" icon={Trash2} label={`Supprimer le compte ${row.code}`} onClick={onDelete} />
+      </TableCell>
+    </TableRow>
   )
 }
 
 export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
   const [rows, setRows] = useState<LedgerAccountRead[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  // The last mutation that failed, and the last load that failed.
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<LedgerAccountRead | null>(null)
   const [newCode, setNewCode] = useState('')
   const [newName, setNewName] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  // Only the latest load may land (switching account quickly).
+  const requestSeq = useRef(0)
+  // What is shown right now. Mutations and refresh() outlive the render that
+  // made them, so a late response or error is checked against this and never
+  // lands on another account.
+  const currentAccount = useRef(accountId)
+  useEffect(() => {
+    currentAccount.current = accountId
+  })
 
   async function refresh() {
-    // Caught here (not left to the caller) so a failed list call always
-    // clears loading instead of leaving the tab stuck on "Loading…" forever,
-    // and so run()'s post-mutation `await refresh()` can never reject with an
-    // unhandled rejection.
+    const seq = ++requestSeq.current
+    const id = currentAccount.current
     try {
-      setRows(await listLedgerAccounts(accountId))
+      const fetched = await listLedgerAccounts(id)
+      if (seq !== requestSeq.current) return
+      setRows(fetched)
+      setLoaded(true)
+      setLoadError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load ledger accounts')
-    } finally {
-      setLoading(false)
+      if (seq === requestSeq.current) setLoadError(frameError(err, { client: RELOAD_LEAD }))
     }
   }
 
+  function reportError(id: number, message: string) {
+    if (currentAccount.current === id) setError(message)
+  }
+
   useEffect(() => {
-    setLoading(true)
+    setRows([])
+    setLoaded(false)
+    setError(null)
+    setLoadError(null)
+    setDeleting(null)
+    setNewCode('')
+    setNewName('')
+    setAdding(false)
+    setAddError(null)
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId])
 
-  // Wraps a mutation so failures (e.g. a name cleared to empty -> 422, or a
-  // delete that no longer applies) surface in the shared error line, and the
-  // list re-syncs with the server either way - mirrors CategoriesView's run().
-  async function run(mutation: () => Promise<unknown>) {
+  // Runs a rename so a failure (e.g. a name cleared server-side) surfaces in
+  // the shared error line, and the list re-syncs with the server either way.
+  // `failure` says what did not happen; the framed error follows it. Resolves
+  // to whether the mutation succeeded.
+  async function run(failure: string, mutation: () => Promise<unknown>): Promise<boolean> {
+    const id = accountId
     setError(null)
+    let ok = true
     try {
       await mutation()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Operation failed')
+      ok = false
+      reportError(id, `${failure} ${frameError(err)}`)
     }
     await refresh()
+    return ok
   }
 
-  const codeValid = CODE_PATTERN.test(newCode)
-  const canAdd = codeValid && newName.trim() !== ''
+  const codeValid = isValidCode(newCode)
+  const canAdd = codeValid && newName.trim() !== '' && !adding
 
   async function add() {
-    setError(null)
+    if (!canAdd) return
+    const id = accountId
+    setAdding(true)
+    setAddError(null)
     try {
-      const created = await createLedgerAccount(accountId, {
-        code: newCode,
-        name: newName.trim(),
-      })
-      // Re-sort locally rather than refetching: the list is ordered by code.
-      setRows((current) => [...current, created].sort((a, b) => a.code.localeCompare(b.code)))
-      setNewCode('')
-      setNewName('')
-    } catch (e) {
-      setError(e instanceof Error && e.message.startsWith('409') ? 'That code already exists.' : String(e))
+      const created = await createLedgerAccount(id, { code: newCode, name: newName.trim() })
+      toast('Compte ajouté au plan comptable.', { tone: 'positive' })
+      if (currentAccount.current === id) {
+        // Re-sort locally rather than refetching: the list is ordered by code.
+        setRows((current) => [...current, created].sort((a, b) => a.code.localeCompare(b.code)))
+        setNewCode('')
+        setNewName('')
+      }
+    } catch (err) {
+      if (currentAccount.current === id) {
+        setAddError(
+          httpStatus(err) === 409 ? 'Ce code existe déjà.' : `Le compte n’a pas été ajouté. ${frameError(err)}`,
+        )
+      }
+    } finally {
+      if (currentAccount.current === id) setAdding(false)
     }
   }
 
-  if (loading) return <p className="empty-state">Loading…</p>
+  function addOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      add()
+    }
+  }
+
+  const codeHint = codeHintFor(newCode)
+  const preview = classTag(newCode)
 
   return (
-    <div className="ledger-accounts-view">
-      <h2>Ledger accounts</h2>
-      <p className="view-hint">
-        Your chart of accounts. The class is the code's first digit and is set for you.
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Plan comptable" />
+      <p className="max-w-measure type-body-sm text-fg-muted">
+        Les comptes sur lesquels imputer les lignes des flux. La classe est le premier chiffre du code ; elle est
+        déduite pour vous.
       </p>
 
-      <div className="ledger-add-row">
-        <input
-          type="text"
-          placeholder="610000"
-          value={newCode}
-          onChange={(e) => setNewCode(e.target.value)}
-          aria-label="Code"
-        />
-        <span className="ledger-class-badge">
-          {codeValid ? `${newCode[0]} ${CLASS_LABELS[Number(newCode[0])]}` : '—'}
-        </span>
-        <input
-          type="text"
-          placeholder="Fournitures"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          aria-label="Name"
-        />
-        <button type="button" disabled={!canAdd} onClick={add}>
-          Add
-        </button>
-      </div>
-      {newCode !== '' && !codeValid && (
-        <p className="form-error">A code is digits only and starts with a class, 1 to 7.</p>
+      {loadError && (
+        <Callout tone="negative" title="Le plan comptable n’a pas pu être chargé.">
+          {loadError}{' '}
+          <Button type="button" variant="link" onClick={refresh}>
+            Réessayer
+          </Button>
+        </Callout>
       )}
-      {error && <p className="form-error">{error}</p>}
 
-      {rows.length === 0 && <p className="empty-state">No ledger accounts yet.</p>}
+      {error && (
+        <Callout tone="negative" title="Action impossible">
+          {error}
+        </Callout>
+      )}
 
-      {rows.map((row) => (
-        <LedgerRow
-          key={row.id}
-          row={row}
-          onRename={(name) => run(() => updateLedgerAccount(accountId, row.id, { name }))}
-          onDelete={() => run(() => deleteLedgerAccount(accountId, row.id))}
+      {!loaded && !loadError && <p className="type-body-sm text-fg-muted">Chargement…</p>}
+
+      {loaded && (
+        <Card padding={false}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className={cn(HEAD, 'w-28')}>code</TableHead>
+                <TableHead className={cn(HEAD, 'w-56')}>classe</TableHead>
+                <TableHead className={HEAD}>nom</TableHead>
+                <TableHead className={HEAD}>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <LedgerRow
+                  key={row.id}
+                  row={row}
+                  onRename={(name) =>
+                    run(`Le compte ${row.code} n’a pas été renommé.`, () =>
+                      updateLedgerAccount(accountId, row.id, { name }),
+                    )
+                  }
+                  onDelete={() => setDeleting(row)}
+                />
+              ))}
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={COLUMN_COUNT} className={cn(CELL, 'py-10 text-center text-fg-muted')}>
+                    Aucun compte pour l’instant — ajoutez le premier ci-dessous.
+                  </TableCell>
+                </TableRow>
+              )}
+              <TableRow className="bg-surface-sunken hover:bg-surface-sunken">
+                <TableCell className={CELL}>
+                  <Input
+                    size="sm"
+                    numeric
+                    inputMode="numeric"
+                    aria-label="Code du nouveau compte"
+                    // Left-aligned like the codes above it.
+                    className="text-left"
+                    placeholder="610000"
+                    invalid={codeHint !== null}
+                    value={newCode}
+                    onChange={(e) => {
+                      setNewCode(e.target.value.trim())
+                      setAddError(null)
+                    }}
+                    onKeyDown={addOnEnter}
+                  />
+                </TableCell>
+                <TableCell className={CELL}>
+                  {preview ? <Tag>{preview}</Tag> : <span className="px-2.5 text-fg-subtle">—</span>}
+                </TableCell>
+                <TableCell className={CELL}>
+                  <Input
+                    size="sm"
+                    aria-label="Nom du nouveau compte"
+                    placeholder="Fournitures"
+                    maxLength={200}
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={addOnEnter}
+                  />
+                </TableCell>
+                <TableCell className={cn(CELL, 'text-right')}>
+                  <Button type="button" size="sm" iconLeft={Plus} disabled={!canAdd} onClick={add}>
+                    Ajouter
+                  </Button>
+                </TableCell>
+              </TableRow>
+              {(codeHint || addError) && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={COLUMN_COUNT} className="px-4 py-2">
+                    <p role="alert" className="type-body-sm text-negative-fg">
+                      {addError ?? codeHint}
+                    </p>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title="Supprimer ce compte ?"
+          description={`Le compte ${deleting.code} « ${deleting.name} » sera retiré du plan comptable. Les lignes imputées sur ce compte restent en place, mais non imputées.`}
+          confirmLabel="Supprimer le compte"
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            const id = accountId
+            setError(null)
+            await deleteLedgerAccount(id, deleting.id)
+            toast('Compte retiré du plan comptable.', { tone: 'positive' })
+            if (currentAccount.current === id) {
+              // A "code already exists" message may have named this very code.
+              setAddError(null)
+              await refresh()
+            }
+          }}
         />
-      ))}
+      )}
     </div>
   )
 }
