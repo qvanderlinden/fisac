@@ -19,7 +19,6 @@ const srcDir = join(root, 'src')
 const LEGACY = [
   'src/accountingDisplay.ts',
   'src/components/AnnualAccountsView.tsx',
-  'src/components/BalanceChart.tsx',
   'src/components/CategoriesView.tsx',
   'src/components/FlowBulkEditDialog.tsx',
   'src/components/FlowGenerator.tsx',
@@ -27,7 +26,6 @@ const LEGACY = [
   'src/components/FlowRow.tsx',
   'src/components/LedgerAccountsView.tsx',
   'src/components/NewFlowRow.tsx',
-  'src/components/ProjectionView.tsx',
   'src/components/VatView.tsx',
   'src/components/ui',
   'src/lib/utils.ts',
