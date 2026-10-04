@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Callout, Dialog } from '@qvanderlinden/ui'
-import { frameError } from '../errors'
+import { RELOAD_LEAD, frameError } from '../errors'
 
 interface ConfirmDialogProps {
   title: string
@@ -26,7 +26,7 @@ export function ConfirmDialog({ title, description, confirmLabel, onConfirm, onC
     try {
       await onConfirm()
     } catch (err) {
-      setError(frameError(err, { client: 'Rechargez la page, puis réessayez.' }))
+      setError(frameError(err, { client: RELOAD_LEAD }))
       setBusy(false)
       return
     }
@@ -59,7 +59,7 @@ export function ConfirmDialog({ title, description, confirmLabel, onConfirm, onC
       }
     >
       {error && (
-        <Callout tone="negative" title="Action impossible">
+        <Callout tone="negative" title="Action impossible.">
           {error}
         </Callout>
       )}

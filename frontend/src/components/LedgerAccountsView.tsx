@@ -4,7 +4,7 @@ import { Button, Callout, Card, IconButton, Input, Tag, cn, toast } from '@qvand
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
 import { createLedgerAccount, deleteLedgerAccount, listLedgerAccounts, updateLedgerAccount } from '../api/client'
 import type { LedgerAccountRead } from '../api/types'
-import { frameError, httpStatus } from '../errors'
+import { RELOAD_LEAD, frameError, httpStatus } from '../errors'
 import { ConfirmDialog } from './ConfirmDialog'
 import { CELL, CELL_CONTROL, HEAD, ROW } from './editableTable'
 import { classTag, codeHint as codeHintFor, CLASS_LABELS, isValidCode } from './ledgerCode'
@@ -16,8 +16,6 @@ interface LedgerAccountsViewProps {
 
 // code + class + name + delete
 const COLUMN_COUNT = 4
-
-const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
 
 const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
   if (e.key === 'Enter') e.currentTarget.blur()
@@ -206,7 +204,7 @@ export function LedgerAccountsView({ accountId }: LedgerAccountsViewProps) {
       )}
 
       {error && (
-        <Callout tone="negative" title="Action impossible">
+        <Callout tone="negative" title="Action impossible.">
           {error}
         </Callout>
       )}

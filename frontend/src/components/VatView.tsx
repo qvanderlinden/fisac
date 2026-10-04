@@ -12,7 +12,7 @@ import {
 } from '@qvanderlinden/ui'
 import { fetchVat } from '../api/client'
 import type { AccountRead, AccountVat, VatFlow } from '../api/types'
-import { frameError } from '../errors'
+import { RELOAD_LEAD, frameError } from '../errors'
 import { eur, formatDate, formatRate } from '../format'
 import { netDueTone, visibleVatFlows } from '../reportFigures'
 import { PageHeader } from './PageHeader'
@@ -27,8 +27,6 @@ const CURRENT_QUARTER = Math.floor(now.getMonth() / 3) + 1
 // Next year, this year, and six years back.
 const YEARS = Array.from({ length: 8 }, (_, i) => String(CURRENT_YEAR + 1 - i))
 const QUARTER_OPTIONS = [1, 2, 3, 4].map((q) => ({ value: String(q), label: `T${q}` }))
-
-const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
 
 function vatCell(value: string) {
   return Number(value) !== 0 ? eur(value) : <span className="text-fg-subtle">—</span>

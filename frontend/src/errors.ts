@@ -41,6 +41,9 @@ export interface ErrorLeads {
   other?: string
 }
 
+/** The lead for a refused load or reload: nothing to fix in a field, so reload the page. */
+export const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
+
 const CLIENT_LEAD = 'Vérifiez les champs, puis réessayez.'
 const OTHER_LEAD = 'Réessayez dans un instant.'
 

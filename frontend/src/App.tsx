@@ -228,6 +228,7 @@ export default function App() {
     <div className="min-h-screen bg-surface-page min-[760px]:flex">
       <aside className="sticky top-0 hidden h-screen shrink-0 min-[760px]:block">
         <SidebarNav
+          aria-label="Navigation principale"
           tone="cream"
           className="overflow-y-auto"
           header={

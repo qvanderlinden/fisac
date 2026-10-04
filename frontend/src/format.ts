@@ -123,6 +123,22 @@ export function parseDecimal(text: string): string | null {
   return toApiDecimal(n)
 }
 
+/** The backend stores amounts as Numeric(12,2): ten billion and up is rejected. */
+export const MAX_AMOUNT = 10_000_000_000
+
+/**
+ * True when typed text cannot be sent as an amount: unreadable (a blank field
+ * included), a third decimal, negative unless `signed`, or - with `max` - of
+ * that size or more. Validation and the request share parseDecimal, so what
+ * passes is what is stored. Callers that accept a blank field check it first.
+ */
+export function isBadAmount(text: string, { signed = false, max = Infinity }: { signed?: boolean; max?: number } = {}): boolean {
+  const d = parseDecimal(text)
+  if (d === null) return true
+  const n = Number(d)
+  return (!signed && n < 0) || Math.abs(n) >= max
+}
+
 /** The noun for a count, French plural from 2: `pluralNoun(1, 'flux inséré', 'flux insérés')` → `flux inséré`. */
 export function pluralNoun(n: number, singular: string, plural: string): string {
   return n > 1 ? plural : singular

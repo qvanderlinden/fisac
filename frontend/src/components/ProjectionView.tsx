@@ -39,8 +39,8 @@ import type {
   ProjectionFlow,
 } from '../api/types'
 import { PAYMENT_METHOD_ICONS, addMonthsFrom, paymentMethodLabel, todayDateInputValue } from '../accountingDisplay'
-import { frameError } from '../errors'
-import { amountInput, eur, formatDate, parseDecimal, signedFlowAmount } from '../format'
+import { RELOAD_LEAD, frameError } from '../errors'
+import { MAX_AMOUNT, amountInput, eur, formatDate, isBadAmount, parseDecimal, signedFlowAmount } from '../format'
 import { BalanceChart } from './BalanceChart'
 import { FlowForm } from './FlowForm'
 import { PageHeader } from './PageHeader'
@@ -81,6 +81,7 @@ function BalanceDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const value = parseDecimal(draft)
+  const invalid = value === null || isBadAmount(draft, { signed: true, max: MAX_AMOUNT })
 
   function requestClose() {
     if (!saving) onClose()
@@ -89,7 +90,7 @@ function BalanceDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitted(true)
-    if (value === null) return
+    if (value === null || invalid) return
     setSaving(true)
     setError(null)
     try {
@@ -130,7 +131,7 @@ function BalanceDialog({
               Solde au <span className="numeric">{formatDate(asOf, 'full')}</span>
             </>
           }
-          error={submitted && value === null ? 'Montant illisible — par exemple 1 234,56.' : undefined}
+          error={submitted && invalid ? 'Montant illisible ou trop grand — par exemple 1 234,56.' : undefined}
         >
           <Input numeric value={draft} onChange={(e) => setDraft(e.target.value)} />
         </Field>
@@ -187,7 +188,7 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
       setLedgerAccounts(fetchedLedgerAccounts)
       setLoadError(null)
     } catch (err) {
-      if (seq === requestSeq.current) setLoadError(frameError(err))
+      if (seq === requestSeq.current) setLoadError(frameError(err, { client: RELOAD_LEAD }))
     }
   }
 
@@ -200,40 +201,47 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
     setFlowSearch('')
   }, [account.id])
 
+  // Also when the account's balance or Visa days change (the account dialog
+  // edits them while this view is showing): the projection derives from them.
   useEffect(() => {
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account.id, windowMonths])
+  }, [account.id, windowMonths, account.current_balance, account.visa_payment_day, account.visa_closing_day])
 
   async function togglePaid(flow: ProjectionFlow) {
     try {
       await setFlowPaid(account.id, flow.id, !flow.paid)
       toast(flow.paid ? 'Flux marqué à payer.' : 'Flux marqué payé.', { tone: 'positive' })
     } catch (err) {
-      toast(`Le statut n’a pas été modifié. ${frameError(err)}`, { tone: 'negative' })
+      toast(`Le statut n’a pas été modifié. ${frameError(err, { client: RELOAD_LEAD })}`, { tone: 'negative' })
     }
     await refresh()
   }
 
   async function startEditing(flow: ProjectionFlow) {
+    const accountId = account.id
     // ProjectionFlow is a thin view; fetch the full flow (lines, category,
     // method) before opening the editor.
     try {
-      const full = await getFlow(account.id, flow.id)
+      const full = await getFlow(accountId, flow.id)
       // The editor offers "Supprimer la série (N)": count the series' flows.
       // Without the count (the fetch failed) the button simply omits it.
       let batchCount: number | undefined
       if (full.batch_id != null) {
         try {
-          batchCount = (await listFlows(account.id)).filter((f) => f.batch_id === full.batch_id).length
+          batchCount = (await listFlows(accountId)).filter((f) => f.batch_id === full.batch_id).length
         } catch {
           // The count is optional: the editor opens without it.
         }
       }
+      // A late answer after an account switch must not open the editor on
+      // the account now shown.
+      if (selection.current.accountId !== accountId) return
       setEditingBatchCount(batchCount)
       setEditingFlow(full)
     } catch (err) {
-      toast(`Le flux n’a pas pu être ouvert. ${frameError(err)}`, { tone: 'negative' })
+      if (selection.current.accountId !== accountId) return
+      toast(`Le flux n’a pas pu être ouvert. ${frameError(err, { client: RELOAD_LEAD })}`, { tone: 'negative' })
     }
   }
 

@@ -16,8 +16,8 @@ asyncpg + Alembic, uv for Python deps.
 
 There is no linter, type checker, or test suite configured for the Python side.
 The frontend is typechecked by `tsc -b` as part of `npm run build`;
-`npm run test` runs its vitest unit tests (`src/format.ts`, `src/errors.ts`)
-and `npm run check:design` its design-system compliance guard.
+`npm run test` runs its vitest suites (`src/**/*.test.ts(x)`, in two time
+zones) and `npm run check:design` its design-system compliance guard.
 
 ## Layout
 

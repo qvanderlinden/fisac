@@ -264,7 +264,8 @@ export function BalanceChart({
                 textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
                 className="numeric fill-chart-axis text-[10px]"
               >
-                {formatDate(new Date(tick))}
+                {/* A long window's two ends carry the year, so "04 oct." ... "04 oct." cannot read as the same day. */}
+                {formatDate(new Date(tick), windowMonths >= 6 && (i === 0 || i === xTicks.length - 1) ? 'full' : 'table')}
               </text>
             ))}
 

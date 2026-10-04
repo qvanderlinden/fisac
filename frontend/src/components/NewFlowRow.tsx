@@ -93,9 +93,12 @@ export function NewFlowRow({
   return (
     <>
       <TableRow className="bg-surface-selected hover:bg-surface-selected" onKeyDown={onKeyDown}>
-        <TableCell className={CELL} />
-        <TableCell className={CELL} />
-        <TableCell className={CELL} />
+        {/* The marker, chevron and checkbox columns hold nothing on a draft:
+            one cell spans them and carries Annuler, so the actions column
+            keeps the width of a saved row's single button. */}
+        <TableCell colSpan={3} className={cn(CELL, 'text-center')}>
+          <IconButton size="sm" icon={X} label="Annuler" onClick={onCancel} disabled={saving} />
+        </TableCell>
         <TableCell className={CELL}>
           <Input
             size="sm"
@@ -182,10 +185,7 @@ export function NewFlowRow({
           </Badge>
         </TableCell>
         <TableCell className={cn(CELL, 'text-right')}>
-          <div className="flex justify-end gap-1">
-            <IconButton size="sm" icon={Check} label="Enregistrer le flux" onClick={save} disabled={saving} />
-            <IconButton size="sm" icon={X} label="Annuler" onClick={onCancel} disabled={saving} />
-          </div>
+          <IconButton size="sm" icon={Check} label="Enregistrer le flux" onClick={save} disabled={saving} />
         </TableCell>
       </TableRow>
       {error && (

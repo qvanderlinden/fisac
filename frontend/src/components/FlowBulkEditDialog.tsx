@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { Button, Callout, Checkbox, Dialog, Field, Input, Select } from '@qvanderlinden/ui'
 import type { AccountRead, CategoryRead, FlowBulkUpdate, PaymentMethod } from '../api/types'
 import { frameError } from '../errors'
-import { parseDecimal, parseVatRate } from '../format'
+import { MAX_AMOUNT, isBadAmount, parseDecimal, parseVatRate } from '../format'
 import { CountFigure } from './CountFigure'
 import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
 
@@ -52,7 +52,7 @@ export function FlowBulkEditDialog({
 
   const nothingEnabled = !applyCategory && !applyAmount && !applyPayment && !applyPaid && !applyReverseCharge
   const net = parseDecimal(amountNet)
-  const amountInvalid = net === null || Number(net) < 0
+  const amountInvalid = isBadAmount(amountNet, { max: MAX_AMOUNT })
   // Validated and sent through the same reading, so what passes is what is stored.
   const rate = parseVatRate(vatRate)
   const rateInvalid = rate === null
@@ -138,7 +138,7 @@ export function FlowBulkEditDialog({
             <Field
               label="Montant net"
               hint={applyAmount ? 'Remplace les lignes de chaque flux par une seule ligne.' : undefined}
-              error={submitted && applyAmount && amountInvalid ? 'Montant illisible — par exemple 1 234,56.' : undefined}
+              error={submitted && applyAmount && amountInvalid ? 'Montant illisible ou trop grand — par exemple 1 234,56.' : undefined}
             >
               <Input
                 numeric

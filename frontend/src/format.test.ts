@@ -5,6 +5,8 @@ import {
   eur,
   formatDate,
   formatRate,
+  isBadAmount,
+  MAX_AMOUNT,
   parseDecimal,
   parseRate,
   parseVatRate,
@@ -206,5 +208,33 @@ describe('parseRate', () => {
     expect(parseRate('12,125', '100')).toBeNull()
     expect(parseRate('150', '100')).toBeNull()
     expect(parseRate('-1', '100')).toBeNull()
+  })
+})
+
+describe('isBadAmount', () => {
+  it('accepts readable, non-negative amounts', () => {
+    expect(isBadAmount('12,50')).toBe(false)
+    expect(isBadAmount('1 234,56')).toBe(false)
+    expect(isBadAmount('0')).toBe(false)
+  })
+
+  it('rejects unreadable text, a third decimal and a blank field', () => {
+    expect(isBadAmount('12,5x')).toBe(true)
+    expect(isBadAmount('1,234')).toBe(true)
+    expect(isBadAmount('')).toBe(true)
+  })
+
+  it('rejects a negative amount unless the field is signed', () => {
+    expect(isBadAmount('-42,5')).toBe(true)
+    expect(isBadAmount('-42,5', { signed: true })).toBe(false)
+  })
+
+  it('rejects an amount at or above the cap, whichever the sign', () => {
+    expect(MAX_AMOUNT).toBe(10_000_000_000)
+    expect(isBadAmount('9 999 999 999,99', { max: MAX_AMOUNT })).toBe(false)
+    expect(isBadAmount('10 000 000 000', { max: MAX_AMOUNT })).toBe(true)
+    expect(isBadAmount('-10 000 000 000', { signed: true, max: MAX_AMOUNT })).toBe(true)
+    expect(isBadAmount('-9 999 999 999,99', { signed: true, max: MAX_AMOUNT })).toBe(false)
+    expect(isBadAmount('10 000 000 000')).toBe(false)
   })
 })

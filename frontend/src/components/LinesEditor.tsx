@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Button, IconButton, Input, Select } from '@qvanderlinden/ui'
 import type { FlowLineCreate, FlowLineRead, LedgerAccountRead } from '../api/types'
-import { amountInput, eur, parseDecimal, parseNumber, rateInput } from '../format'
+import { MAX_AMOUNT, amountInput, eur, isBadAmount, parseDecimal, parseNumber, parseVatRate, rateInput } from '../format'
 
 export interface LineDraft {
   description: string
@@ -84,29 +84,22 @@ export function linesTotals(
   return { net: round2(net), vat: round2(vat), gross: round2(reverseCharge ? net : net + vat) }
 }
 
-// The backend stores a net as Numeric(12,2): ten billion and up is rejected.
-const MAX_NET = 10_000_000_000
-
 // Blank is fine (the line is dropped, or the rate is 0); anything else must be
 // what linesToPayload will read through parseDecimal (so no third decimal), and
 // in range, or saving would silently drop, round or reject it. The gross is
 // only ever a means to a net, so the column limit applies to the net alone.
 function amountProblem(text: string, max = Infinity): boolean {
-  if (text.trim() === '') return false
-  const d = parseDecimal(text)
-  return d === null || Number(d) < 0 || Number(d) >= max
+  return text.trim() !== '' && isBadAmount(text, { max })
 }
 
 function rateProblem(text: string): boolean {
-  if (text.trim() === '') return false
-  const d = parseDecimal(text)
-  return d === null || Number(d) < 0 || Number(d) > 100
+  return parseVatRate(text) === null
 }
 
 /** False while any line holds an unreadable or out-of-range amount or rate. */
 export function linesValid(lines: LineDraft[]): boolean {
   return lines.every(
-    (l) => !amountProblem(l.amount_net, MAX_NET) && !amountProblem(l.amount_gross) && !rateProblem(l.vat_rate),
+    (l) => !amountProblem(l.amount_net, MAX_AMOUNT) && !amountProblem(l.amount_gross) && !rateProblem(l.vat_rate),
   )
 }
 
@@ -212,7 +205,7 @@ export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = f
             <div className={GRID} key={i}>
               <Input
                 size="sm"
-                aria-label="Description"
+                aria-label={`Description ligne ${i + 1}`}
                 placeholder="Description"
                 value={line.description}
                 onChange={(e) => updateLine(i, { description: e.target.value })}
@@ -220,9 +213,9 @@ export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = f
               <Input
                 size="sm"
                 numeric
-                aria-label="Montant net"
+                aria-label={`Montant net ligne ${i + 1}`}
                 placeholder="0,00"
-                invalid={amountProblem(line.amount_net, MAX_NET)}
+                invalid={amountProblem(line.amount_net, MAX_AMOUNT)}
                 value={line.amount_net}
                 onChange={(e) =>
                   updateLine(i, {
@@ -236,7 +229,7 @@ export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = f
                 size="sm"
                 numeric
                 suffix="%"
-                aria-label="Taux de TVA"
+                aria-label={`Taux de TVA ligne ${i + 1}`}
                 invalid={rateProblem(line.vat_rate)}
                 value={line.vat_rate}
                 onChange={(e) =>
@@ -257,7 +250,7 @@ export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = f
               <Input
                 size="sm"
                 numeric
-                aria-label="Montant brut"
+                aria-label={`Montant brut ligne ${i + 1}`}
                 placeholder="0,00"
                 invalid={amountProblem(line.amount_gross)}
                 value={line.amount_gross}
@@ -271,7 +264,7 @@ export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = f
               />
               <Select
                 size="sm"
-                aria-label="Compte du plan comptable"
+                aria-label={`Compte du plan comptable ligne ${i + 1}`}
                 value={line.ledger_account_id === '' ? UNBOOKED : line.ledger_account_id}
                 onValueChange={(value) => updateLine(i, { ledger_account_id: value === UNBOOKED ? '' : value })}
                 options={ledgerOptions}
@@ -280,7 +273,7 @@ export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = f
                 type="button"
                 icon={X}
                 size="sm"
-                label="Retirer la ligne"
+                label={`Retirer la ligne ${i + 1}`}
                 onClick={() => onChange(lines.filter((_, j) => j !== i))}
                 disabled={lines.length === 1}
               />

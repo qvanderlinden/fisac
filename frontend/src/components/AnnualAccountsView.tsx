@@ -11,7 +11,7 @@ import {
 } from '@qvanderlinden/ui/primitives'
 import { fetchAnnualAccounts } from '../api/client'
 import type { AccountRead, AnnualAccounts } from '../api/types'
-import { frameError } from '../errors'
+import { RELOAD_LEAD, frameError } from '../errors'
 import { eur, signedEur } from '../format'
 import { hasActivity, signTone } from '../reportFigures'
 import { CountFigure } from './CountFigure'
@@ -23,8 +23,6 @@ interface AnnualAccountsViewProps {
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 8 }, (_, i) => String(CURRENT_YEAR + 1 - i))
-
-const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
 
 // The three figure cells of a row: N, N-1 and the signed change. Figures are
 // signed (revenue positive, expense negative), so the tone follows the sign
@@ -61,6 +59,22 @@ export function AnnualAccountsView({ account }: AnnualAccountsViewProps) {
       cancelled = true
     }
   }, [account.id, year, reloadKey])
+
+  // Off by default: an account with no activity in either year is noise. One
+  // used last year but not this one still shows - an account going to zero is
+  // what the comparison is for.
+  const visibleClasses = (data?.classes ?? [])
+    .map((cls) => ({
+      cls,
+      rows: showAll ? cls.accounts : cls.accounts.filter((a) => hasActivity(a.current, a.prior)),
+    }))
+    .filter(({ rows }) => rows.length > 0)
+  // Shown whatever the switch says: lines booked nowhere must stay visible, or
+  // the result looks unexplained. Also shown when unbooked lines net to zero,
+  // so the "N lines still unbooked" signal can't hide behind a coincidental
+  // zero total.
+  const showUnassigned =
+    data !== null && (hasActivity(data.unassigned.current, data.unassigned.prior) || data.unassigned.line_count > 0)
 
   // The header (year, show-all switch) always renders, so a failed fetch
   // still leaves the year control usable.
@@ -105,12 +119,7 @@ export function AnnualAccountsView({ account }: AnnualAccountsViewProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.classes.map((cls) => {
-                // Off by default: an account with no activity in either year is
-                // noise. One used last year but not this one still shows -
-                // an account going to zero is what the comparison is for.
-                const rows = showAll ? cls.accounts : cls.accounts.filter((a) => hasActivity(a.current, a.prior))
-                if (rows.length === 0) return null
+              {visibleClasses.map(({ cls, rows }) => {
                 return [
                   <TableRow key={`class-${cls.pcmn_class}`} className="bg-surface-sunken">
                     <TableCell colSpan={4} className="type-subheading text-fg-strong">
@@ -133,11 +142,15 @@ export function AnnualAccountsView({ account }: AnnualAccountsViewProps) {
                 ]
               })}
 
-              {/* Shown whatever the switch says: lines booked nowhere must stay
-                  visible, or the result looks unexplained. Also shown when
-                  unbooked lines net to zero, so the "N lines still unbooked"
-                  signal can't hide behind a coincidental zero total. */}
-              {(hasActivity(data.unassigned.current, data.unassigned.prior) || data.unassigned.line_count > 0) && (
+              {visibleClasses.length === 0 && !showUnassigned && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={4} className="py-6 text-center text-fg-muted">
+                    Aucun compte imputé cette année.
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {showUnassigned && (
                 <TableRow className="hover:bg-surface-hover">
                   <TableCell className="text-fg-body">
                     non affecté (<CountFigure n={data.unassigned.line_count} singular="ligne" plural="lignes" />)

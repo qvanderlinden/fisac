@@ -4,7 +4,7 @@ import { Button, Callout, Dialog, Field, Input, Switch, toast } from '@qvanderli
 import { createAccount, deleteAccount, updateAccount } from '../api/client'
 import type { AccountCreate, AccountRead } from '../api/types'
 import { frameError } from '../errors'
-import { amountInput, parseDecimal } from '../format'
+import { MAX_AMOUNT, amountInput, isBadAmount, parseDecimal } from '../format'
 import { ConfirmDialog } from './ConfirmDialog'
 
 interface AccountFormProps {
@@ -46,6 +46,7 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const balanceValue = parseDecimal(balance)
+  const balanceInvalid = balanceValue === null || isBadAmount(balance, { signed: true, max: MAX_AMOUNT })
   const paymentDay = parseDay(paymentDayText)
   const closingDay = parseDay(closingDayText)
 
@@ -57,7 +58,7 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
     e.preventDefault()
     if (saving) return
     setSubmitted(true)
-    if (name.trim() === '' || balanceValue === null || paymentDay === 'invalid' || closingDay === 'invalid') {
+    if (name.trim() === '' || balanceValue === null || balanceInvalid || paymentDay === 'invalid' || closingDay === 'invalid') {
       return
     }
     const payload: AccountCreate = {
@@ -121,7 +122,7 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
           </Field>
           <Field
             label="Solde actuel"
-            error={submitted && balanceValue === null ? 'Montant illisible — par exemple 1 234,56.' : undefined}
+            error={submitted && balanceInvalid ? 'Montant illisible ou trop grand — par exemple 1 234,56.' : undefined}
           >
             <Input numeric value={balance} onChange={(e) => setBalance(e.target.value)} />
           </Field>
