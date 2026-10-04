@@ -123,7 +123,22 @@ export function parseDecimal(text: string): string | null {
   return toApiDecimal(n)
 }
 
+/** The noun for a count, French plural from 2: `pluralNoun(1, 'flux inséré', 'flux insérés')` → `flux inséré`. */
+export function pluralNoun(n: number, singular: string, plural: string): string {
+  return n > 1 ? plural : singular
+}
+
 /** A count and its noun, French plural from 2: `countLabel(3, 'flux modifié', 'flux modifiés')` → `3 flux modifiés`. */
 export function countLabel(n: number, singular: string, plural: string): string {
-  return `${formatNumber(n)} ${n > 1 ? plural : singular}`
+  return `${formatNumber(n)} ${pluralNoun(n, singular, plural)}`
+}
+
+/**
+ * A VAT rate as typed ("21", "5,5", blank for 0) as an API decimal string, or
+ * null when it can't be sent as typed: unreadable, a third decimal, below 0 or
+ * above 100. Validation and the request share this one reading.
+ */
+export function parseVatRate(text: string): string | null {
+  const rate = text.trim() === '' ? '0' : parseDecimal(text)
+  return rate === null || Number(rate) < 0 || Number(rate) > 100 ? null : rate
 }

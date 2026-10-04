@@ -6,6 +6,8 @@ import {
   formatDate,
   formatRate,
   parseDecimal,
+  parseVatRate,
+  pluralNoun,
   rateInput,
   signedEur,
   signedFlowAmount,
@@ -152,5 +154,34 @@ describe('countLabel', () => {
 
   it('groups large counts like every other figure', () => {
     expect(countLabel(1200, 'flux', 'flux')).toBe(`1${NNBSP}200 flux`)
+  })
+})
+
+describe('pluralNoun', () => {
+  it('is the rule countLabel uses: singular for 0 and 1, plural from 2', () => {
+    expect(pluralNoun(0, 'flux', 'flux modifiés')).toBe('flux')
+    expect(pluralNoun(1, 'flux inséré', 'flux insérés')).toBe('flux inséré')
+    expect(pluralNoun(2, 'flux inséré', 'flux insérés')).toBe('flux insérés')
+  })
+})
+
+describe('parseVatRate', () => {
+  it('reads a rate through parseDecimal, French comma included', () => {
+    expect(parseVatRate('21')).toBe('21')
+    expect(parseVatRate('5,5')).toBe('5.5')
+    expect(parseVatRate('0')).toBe('0')
+    expect(parseVatRate('100')).toBe('100')
+  })
+
+  it('reads a blank rate as 0', () => {
+    expect(parseVatRate('')).toBe('0')
+    expect(parseVatRate('  ')).toBe('0')
+  })
+
+  it('rejects what would be sent as something else: a third decimal, text, negatives, above 100', () => {
+    expect(parseVatRate('5,125')).toBeNull()
+    expect(parseVatRate('21x')).toBeNull()
+    expect(parseVatRate('-1')).toBeNull()
+    expect(parseVatRate('101')).toBeNull()
   })
 })

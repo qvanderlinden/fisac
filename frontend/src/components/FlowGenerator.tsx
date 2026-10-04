@@ -25,7 +25,7 @@ import type {
 } from '../api/types'
 import { frameError } from '../errors'
 import { countLabel, eur, formatDate, signedFlowAmount, toApiDecimal } from '../format'
-import { CountLabel } from './CountLabel'
+import { CountFigure } from './CountFigure'
 import { FlowForm } from './FlowForm'
 import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
 import { buildProposals } from './generatorProposals'
@@ -132,16 +132,26 @@ export function FlowGenerator({
     }
   }
 
+  // Once the flows are saved the dialog has done its job and is not re-armed:
+  // a failing refresh (the parent reports its own load error) must neither read
+  // as a failed insert nor let the same batch be inserted twice.
   async function handleInsert() {
     setInserting(true)
     setInsertError(null)
     try {
       await createFlowsBulk(account.id, proposals)
-      toast(`${countLabel(proposals.length, 'flux inséré', 'flux insérés')}.`, { tone: 'positive' })
-      await onInserted()
     } catch (err) {
       setInsertError(frameError(err))
       setInserting(false)
+      return
+    }
+    toast(`${countLabel(proposals.length, 'flux inséré', 'flux insérés')}.`, { tone: 'positive' })
+    try {
+      await onInserted()
+    } catch {
+      // Closed, not kept in a "done" state: the flows are saved, so there is
+      // nothing left to retry here (the parent already closes it before it refreshes).
+      onClose()
     }
   }
 
@@ -195,12 +205,14 @@ export function FlowGenerator({
             size="sm"
             icon={Pencil}
             label={`Modifier ${row.proposal.name}`}
+            disabled={inserting}
             onClick={() => setEditingIndex(row.id)}
           />
           <IconButton
             size="sm"
             icon={X}
             label={`Retirer ${row.proposal.name}`}
+            disabled={inserting}
             onClick={() => setProposals((prev) => prev.filter((_, j) => j !== row.id))}
           />
         </div>
@@ -234,7 +246,7 @@ export function FlowGenerator({
                   'Insertion…'
                 ) : (
                   <span>
-                    Insérer <CountLabel n={proposals.length} singular="flux" plural="flux" />
+                    Insérer <CountFigure n={proposals.length} singular="flux" plural="flux" />
                   </span>
                 )}
               </Button>
@@ -259,7 +271,7 @@ export function FlowGenerator({
         {reviewing ? (
           <div className="flex flex-col gap-4">
             <p className="type-body-sm text-fg-muted">
-              <CountLabel n={proposals.length} singular="flux proposé" plural="flux proposés" /> (modèle : {model}
+              <CountFigure n={proposals.length} singular="flux proposé" plural="flux proposés" /> (modèle : {model}
               {provider ? ` via ${provider}` : ''}). Modifiez ou retirez des lignes, puis insérez.
             </p>
             <Card padding={false}>
@@ -296,7 +308,7 @@ export function FlowGenerator({
                   value={categoryId}
                   onValueChange={setCategoryId}
                   disabled={generating}
-                  options={categoryOptions(categories)}
+                  options={categoryOptions(categories, { detailed: true })}
                 />
               </Field>
               <Field label="Moyen de paiement">
@@ -304,11 +316,14 @@ export function FlowGenerator({
                   value={paymentMethod}
                   onValueChange={setPaymentMethod}
                   disabled={generating}
-                  options={paymentMethodOptions(account)}
+                  options={paymentMethodOptions(account, { detailed: true })}
                 />
               </Field>
             </div>
-            <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
+            {/* LinesEditor has no disabled prop: a disabled fieldset covers its inputs and buttons. */}
+            <fieldset disabled={generating} className="m-0 min-w-0 border-0 p-0">
+              <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
+            </fieldset>
             {!linesOk && (
               <p className="type-body-sm text-negative-fg">
                 Un montant ou un taux est illisible — corrigez les cases en rouge.

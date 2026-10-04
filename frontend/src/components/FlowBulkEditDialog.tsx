@@ -2,8 +2,8 @@ import { useId, useState } from 'react'
 import { Button, Callout, Checkbox, Dialog, Field, Input, Select } from '@qvanderlinden/ui'
 import type { AccountRead, CategoryRead, FlowBulkUpdate, PaymentMethod } from '../api/types'
 import { frameError } from '../errors'
-import { parseDecimal, parseNumber } from '../format'
-import { CountLabel } from './CountLabel'
+import { parseDecimal, parseVatRate } from '../format'
+import { CountFigure } from './CountFigure'
 import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
 
 interface FlowBulkEditDialogProps {
@@ -53,8 +53,9 @@ export function FlowBulkEditDialog({
   const nothingEnabled = !applyCategory && !applyAmount && !applyPayment && !applyPaid && !applyReverseCharge
   const net = parseDecimal(amountNet)
   const amountInvalid = net === null || Number(net) < 0
-  const rate = vatRate.trim() === '' ? 0 : parseNumber(vatRate)
-  const rateInvalid = !Number.isFinite(rate) || rate < 0 || rate > 100
+  // Validated and sent through the same reading, so what passes is what is stored.
+  const rate = parseVatRate(vatRate)
+  const rateInvalid = rate === null
 
   // Typed values are lost on close, and a failure arriving late must stay
   // visible: nothing closes the dialog while the request runs.
@@ -70,9 +71,9 @@ export function FlowBulkEditDialog({
     if (applyAmount && (amountInvalid || rateInvalid)) return
     const payload: Omit<FlowBulkUpdate, 'flow_ids'> = {}
     if (applyCategory) payload.category_id = categoryId === NONE ? null : Number(categoryId)
-    if (applyAmount && net !== null) {
+    if (applyAmount && net !== null && rate !== null) {
       payload.amount_net = net
-      payload.vat_rate = parseDecimal(vatRate) ?? '0'
+      payload.vat_rate = rate
     }
     if (applyPayment) payload.payment_method = paymentMethod === NONE ? null : (paymentMethod as PaymentMethod)
     if (applyPaid) payload.paid = paid === 'paid'
@@ -94,7 +95,7 @@ export function FlowBulkEditDialog({
       onClose={requestClose}
       title={
         <>
-          Modifier <CountLabel n={count} singular="flux" plural="flux" />
+          Modifier <CountFigure n={count} singular="flux" plural="flux" />
         </>
       }
       description="Cochez un champ pour l’appliquer à chaque flux sélectionné ; les autres restent inchangés."
@@ -112,7 +113,7 @@ export function FlowBulkEditDialog({
               'Application…'
             ) : (
               <span>
-                Appliquer à <CountLabel n={count} singular="flux" plural="flux" />
+                Appliquer à <CountFigure n={count} singular="flux" plural="flux" />
               </span>
             )}
           </Button>
@@ -127,7 +128,7 @@ export function FlowBulkEditDialog({
             disabled={!applyCategory}
             value={categoryId}
             onValueChange={setCategoryId}
-            options={categoryOptions(categories)}
+            options={categoryOptions(categories, { detailed: true })}
           />
         </div>
 
@@ -147,7 +148,7 @@ export function FlowBulkEditDialog({
                 onChange={(e) => setAmountNet(e.target.value)}
               />
             </Field>
-            <Field label="TVA" error={submitted && applyAmount && rateInvalid ? 'Entre 0 et 100.' : undefined}>
+            <Field label="TVA" error={submitted && applyAmount && rateInvalid ? 'Entre 0 et 100, deux décimales au plus.' : undefined}>
               <Input
                 numeric
                 suffix="%"
@@ -170,7 +171,7 @@ export function FlowBulkEditDialog({
             disabled={!applyPayment}
             value={paymentMethod}
             onValueChange={setPaymentMethod}
-            options={paymentMethodOptions(account)}
+            options={paymentMethodOptions(account, { detailed: true })}
           />
           {applyPayment && paymentMethod === 'visa' && (
             <p className="type-body-sm text-fg-muted">

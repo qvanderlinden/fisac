@@ -10,10 +10,11 @@ import type {
   LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
-import { PAYMENT_METHOD_LABELS, addDaysFrom, todayDateInputValue, visaPaymentDate } from '../accountingDisplay'
+import { addDaysFrom, todayDateInputValue, visaPaymentDate } from '../accountingDisplay'
 import { frameError } from '../errors'
-import { formatDate, formatRate } from '../format'
+import { formatDate } from '../format'
 import { ConfirmDialog } from './ConfirmDialog'
+import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
 import { LinesEditor, linesToDrafts, linesToPayload, linesValid, type LineDraft } from './LinesEditor'
 
 interface FlowFormProps {
@@ -32,11 +33,6 @@ interface FlowFormProps {
   // Number of flows in the batch, when the caller knows it (shown on the button).
   batchCount?: number
 }
-
-export const PAYMENT_METHODS: PaymentMethod[] = ['direct_debit', 'bank_transfer', 'visa']
-
-// Radix Select values can't be empty strings; this stands for "none".
-const NONE = 'none'
 
 type Confirming = 'delete' | 'batch' | null
 
@@ -120,31 +116,6 @@ export function FlowForm({
       ? 'Nouveau revenu'
       : 'Nouvelle dépense'
 
-  const categoryOptions = [
-    { value: NONE, label: 'Aucune catégorie' },
-    ...categories.map((c) => ({
-      value: String(c.id),
-      // One wrapper: the Select item is a flex row with a gap, which would
-      // pull the figure away from its parentheses.
-      label: (
-        <span>
-          {c.name} (<span className="numeric">{formatRate(c.tax_deduction_rate)}</span> déductible)
-        </span>
-      ),
-    })),
-  ]
-  const methodOptions = [
-    { value: NONE, label: 'Sans paiement (compte courant associés)' },
-    ...PAYMENT_METHODS.map((m) => ({
-      value: m,
-      label:
-        m === 'visa' && account.visa_payment_day == null
-          ? `${PAYMENT_METHOD_LABELS[m]} (jour Visa du compte à définir)`
-          : PAYMENT_METHOD_LABELS[m],
-      disabled: m === 'visa' && account.visa_payment_day == null,
-    })),
-  ]
-
   return (
     <>
       <Dialog
@@ -201,7 +172,11 @@ export function FlowForm({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Catégorie">
-              <Select value={categoryId} onValueChange={setCategoryId} options={categoryOptions} />
+              <Select
+                value={categoryId}
+                onValueChange={setCategoryId}
+                options={categoryOptions(categories, { detailed: true })}
+              />
             </Field>
             <Field
               label="Date de facture"
@@ -214,7 +189,11 @@ export function FlowForm({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Moyen de paiement">
-              <Select value={paymentMethod} onValueChange={setPaymentMethod} options={methodOptions} />
+              <Select
+                value={paymentMethod}
+                onValueChange={setPaymentMethod}
+                options={paymentMethodOptions(account, { detailed: true })}
+              />
             </Field>
             {!noPayment && !isVisa && (
               <Field label="Date de paiement" hint="Date du mouvement de trésorerie.">
