@@ -13,23 +13,6 @@
   --shadow: 0 20px 50px rgba(11, 11, 11, 0.16);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface-1: #1a1a19;
-    --page-plane: #121211;
-    --sidebar-bg: #17110d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --gridline: #2c2c2a;
-    --baseline: #383835;
-    --series-1: #3987e5;
-    --danger: #e66767;
-    --border: rgba(255, 255, 255, 0.1);
-    --shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-  }
-}
-
 * {
   box-sizing: border-box;
 }
@@ -1886,12 +1869,6 @@ h4 {
    Amber rather than the negative red, which in this app means money out. */
 :root {
   --warning: #b8860b;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --warning: #e0a42b;
-  }
 }
 
 .flow-flag-cell {

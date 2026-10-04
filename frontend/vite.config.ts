@@ -16,12 +16,15 @@ export default defineConfig({
       registerType: 'autoUpdate',
       devOptions: { enabled: true },
       manifest: {
-        name: 'Fisac',
-        short_name: 'Fisac',
-        description: 'Track flows and project account balances over time',
+        name: 'fisac',
+        short_name: 'fisac',
+        description: 'Flux, TVA et projection de solde',
+        lang: 'fr',
         display: 'standalone',
-        theme_color: '#2a78d6',
-        background_color: '#fcfcfb',
+        // The one place a literal colour is unavoidable: the manifest can't
+        // read CSS tokens. Terracotta --clay-600 and cream --cream-100.
+        theme_color: '#B04A2A',
+        background_color: '#F9F5ED',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },

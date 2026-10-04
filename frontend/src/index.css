@@ -1,0 +1,12 @@
+/* Tailwind entry: Tailwind, then the design system's tokens, theme, type
+   roles and base styles. fisac defines no colours of its own.
+
+   `legacy` is declared first so it is the lowest cascade layer: the
+   pre-redesign styles.css can style views that are not migrated yet but can
+   never beat a design-system rule. The layer statement must stay above the
+   imports; without it Tailwind emits `legacy` last, i.e. on top. Removed in
+   the cleanup task together with styles.css. */
+@layer legacy;
+@import "tailwindcss";
+@import "@qvanderlinden/ui/styles.css";
+@import "./styles.css" layer(legacy);
