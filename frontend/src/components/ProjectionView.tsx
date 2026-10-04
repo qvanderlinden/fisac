@@ -391,7 +391,11 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
               )}
             </>
           ) : (
-            <p className="type-body-sm text-fg-muted">Aucun flux sur la période.</p>
+            // No day is picked: the empty period, or the chart's starting point
+            // (the current balance, before any flow).
+            <p className="type-body-sm text-fg-muted">
+              {projection.points.length === 0 ? 'Aucun flux sur la période.' : 'Solde actuel, avant les flux de la période.'}
+            </p>
           )}
         </div>
       </BalanceChart>
@@ -402,9 +406,10 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
           <Input
             size="sm"
             icon={Search}
+            name="flow-search"
             aria-label="Rechercher un flux"
             placeholder="Rechercher un flux"
-            className="w-56"
+            className="w-40 sm:w-56"
             value={flowSearch}
             onChange={(e) => setFlowSearch(e.target.value)}
           />

@@ -209,7 +209,7 @@ export function BalanceChart({
       }
       padding={false}
     >
-      <div className="px-2 pb-2">
+      <div className="px-2 py-2">
         <div ref={containerRef}>
           <svg
             width={width}
