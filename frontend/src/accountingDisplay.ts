@@ -1,10 +1,8 @@
+// Accounting rules the views share: payment-method labels and icons, date
+// arithmetic on ISO dates, the Visa payment cycle, and flow completeness.
+// Formatting lives in format.ts.
 import { CalendarCheck, CreditCard, Landmark, type LucideIcon } from 'lucide-react'
-import type { FlowKind, FlowRead, PaymentMethod } from './api/types'
-
-export const FLOW_KIND_LABELS: Record<FlowKind, string> = {
-  revenue: 'Revenue',
-  expense: 'Expense',
-}
+import type { FlowRead, PaymentMethod } from './api/types'
 
 // French display labels for the English enum members (see api/types.ts).
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -16,7 +14,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 // A null payment_method means no payment is actually made (compte courant
 // associés) - such a flow has no payment_date and never reaches cashflow.
 export function paymentMethodLabel(method: PaymentMethod | null): string {
-  return method ? PAYMENT_METHOD_LABELS[method] : 'No payment'
+  return method ? PAYMENT_METHOD_LABELS[method] : 'Sans paiement'
 }
 
 export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, LucideIcon> = {
@@ -25,46 +23,9 @@ export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, LucideIcon> = {
   visa: CreditCard,
 }
 
-export function amountClass(kind: FlowKind): 'amount-positive' | 'amount-negative' {
-  return kind === 'revenue' ? 'amount-positive' : 'amount-negative'
-}
-
-// For genuinely signed values only: account current_balance and the computed
-// running balance in a projection point. Flow amounts are never signed - see
-// formatFlowAmount below.
-export function formatAmount(value: string): string {
-  const n = Number(value)
-  return n > 0 ? `+${n.toFixed(2)}` : n.toFixed(2)
-}
-
-// Flow gross amounts are an unsigned magnitude; kind (revenue/expense) carries
-// the sign, applied here for display only.
-export function formatFlowAmount(kind: FlowKind, amount: string): string {
-  const n = Number(amount)
-  return kind === 'revenue' ? `+${n.toFixed(2)}` : `-${n.toFixed(2)}`
-}
-
-// Plain two-decimal amount, no forced sign (a natural "-" still shows for
-// negatives). For figures that stand on their own, e.g. VAT collected/due.
-export function formatMoney(value: string): string {
-  return Number(value).toFixed(2)
-}
-
 function toInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-// Parses a YYYY-MM-DD date-only string as a *local* date, not UTC midnight -
-// new Date('2026-09-15') would otherwise display as the previous day in
-// timezones behind UTC.
-export function formatDate(isoDate: string): string {
-  const [year, month, day] = isoDate.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
 }
 
 export function todayDateInputValue(): string {
