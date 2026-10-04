@@ -522,7 +522,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
                 {sortableHead('name', 'nom')}
                 {sortableHead('category', 'catégorie')}
                 {sortableHead('invoice_date', 'date de facture')}
-                {sortableHead('payment_method', 'moyen de paiement')}
+                {sortableHead('payment_method', 'moyen')}
                 {sortableHead('payment_date', 'date de paiement')}
                 {sortableHead('amount', 'montant', 'right')}
                 {showReverseCharge && (

@@ -4,9 +4,9 @@
 // text until hovered or focused.
 
 /** Header cell padding, matching CELL. */
-export const HEAD = 'px-2'
+export const HEAD = 'px-1.5'
 /** Body cell padding: denser than DataTable, since cells hold controls. */
-export const CELL = 'px-2 py-1.5'
+export const CELL = 'px-1.5 py-1.5'
 /** Row hover wash. */
 export const ROW = 'hover:bg-surface-hover'
 /** Input / Select trigger inside a cell: borderless until hovered, focus ring kept. */
