@@ -17,10 +17,7 @@ const srcDir = join(root, 'src')
 // Paths (relative to frontend/) not migrated to the design system yet. Each
 // migration task deletes its entries; the cleanup task deletes the list.
 const LEGACY = [
-  'src/App.tsx',
   'src/accountingDisplay.ts',
-  'src/components/AccountForm.tsx',
-  'src/components/AccountSwitcher.tsx',
   'src/components/AnnualAccountsView.tsx',
   'src/components/BalanceChart.tsx',
   'src/components/CategoriesView.tsx',

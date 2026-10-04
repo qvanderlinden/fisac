@@ -1,155 +1,172 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import { Button, Callout, Dialog, Field, Input, Switch, toast } from '@qvanderlinden/ui'
+import { createAccount, deleteAccount, updateAccount } from '../api/client'
 import type { AccountCreate, AccountRead } from '../api/types'
+import { describeError } from '../errors'
+import { amountInput, parseDecimal } from '../format'
+import { ConfirmDialog } from './ConfirmDialog'
 
 interface AccountFormProps {
-  initialAccount?: AccountRead
-  // Always submits every field, in create and edit mode alike - AccountCreate
-  // is structurally assignable to AccountUpdate (whose fields are optional),
-  // so this one type covers both call sites in AccountSwitcher.
-  onSubmit: (payload: AccountCreate) => Promise<void>
-  onCancel: () => void
-  onDelete?: () => Promise<void>
+  /** The account to edit; null creates a new one. */
+  account: AccountRead | null
+  onClose: () => void
+  onSaved: (account: AccountRead) => void
+  onDeleted: (accountId: number) => void
 }
 
-export function AccountForm({ initialAccount, onSubmit, onCancel, onDelete }: AccountFormProps) {
-  const [name, setName] = useState(initialAccount?.name ?? '')
-  const [currentBalance, setCurrentBalance] = useState(initialAccount?.current_balance ?? '0.00')
-  const [isCompany, setIsCompany] = useState(initialAccount?.is_company ?? false)
-  const [vatApplicable, setVatApplicable] = useState(initialAccount?.vat_applicable ?? false)
-  const [visaPaymentDay, setVisaPaymentDay] = useState(
-    initialAccount?.visa_payment_day != null ? String(initialAccount.visa_payment_day) : '',
+// A Visa day field: empty means "not set", otherwise a whole day of the month.
+function parseDay(text: string): number | null | 'invalid' {
+  const trimmed = text.trim()
+  if (trimmed === '') return null
+  if (!/^\d{1,2}$/.test(trimmed)) return 'invalid'
+  const day = Number(trimmed)
+  return day >= 1 && day <= 31 ? day : 'invalid'
+}
+
+// The account settings in a Dialog. Saves (create or update) and deletes
+// through the API itself, then reports the result to the shell. Mount it only
+// while it should be open, keyed by the account, so its drafts start fresh.
+export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFormProps) {
+  const formId = useId()
+  const [name, setName] = useState(account?.name ?? '')
+  const [balance, setBalance] = useState(amountInput(account?.current_balance ?? 0))
+  const [isCompany, setIsCompany] = useState(account?.is_company ?? false)
+  const [vatApplicable, setVatApplicable] = useState(account?.vat_applicable ?? false)
+  const [paymentDayText, setPaymentDayText] = useState(
+    account?.visa_payment_day != null ? String(account.visa_payment_day) : '',
   )
-  const [visaClosingDay, setVisaClosingDay] = useState(
-    initialAccount?.visa_closing_day != null ? String(initialAccount.visa_closing_day) : '',
+  const [closingDayText, setClosingDayText] = useState(
+    account?.visa_closing_day != null ? String(account.visa_closing_day) : '',
   )
+  // Field errors show only after the first submit attempt.
+  const [submitted, setSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  const balanceValue = parseDecimal(balance)
+  const paymentDay = parseDay(paymentDayText)
+  const closingDay = parseDay(closingDayText)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      await onSubmit({
-        name,
-        current_balance: currentBalance,
-        is_company: isCompany,
-        // Not shown/editable unless isCompany is checked, so it can't drift
-        // out of sync with is_company client-side either (mirrors the
-        // backend's own normalization).
-        vat_applicable: isCompany && vatApplicable,
-        visa_payment_day: visaPaymentDay.trim() === '' ? null : Number(visaPaymentDay),
-        visa_closing_day: visaClosingDay.trim() === '' ? null : Number(visaClosingDay),
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
-    } finally {
-      setSaving(false)
+    setSubmitted(true)
+    if (name.trim() === '' || balanceValue === null || paymentDay === 'invalid' || closingDay === 'invalid') {
+      return
     }
-  }
-
-  async function handleDelete() {
-    if (!onDelete) return
+    const payload: AccountCreate = {
+      name: name.trim(),
+      current_balance: balanceValue,
+      is_company: isCompany,
+      // Only a company can be VAT-registered; the backend normalizes the same way.
+      vat_applicable: isCompany && vatApplicable,
+      visa_payment_day: paymentDay,
+      visa_closing_day: closingDay,
+    }
     setSaving(true)
     setError(null)
     try {
-      await onDelete()
+      const saved = account ? await updateAccount(account.id, payload) : await createAccount(payload)
+      toast(account ? 'Compte enregistré.' : 'Compte créé.', { tone: 'positive' })
+      onSaved(saved)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete')
+      setError(describeError(err))
       setSaving(false)
     }
   }
 
   return (
-    <form className="flow-form" onSubmit={handleSubmit}>
-      <h2>{initialAccount ? 'Edit account' : 'New account'}</h2>
+    <>
+      <Dialog
+        open
+        onClose={onClose}
+        title={account ? 'Modifier le compte' : 'Nouveau compte'}
+        // Typed values are lost on close, so only Escape, the close button
+        // and "Annuler" close it, not a stray click on the scrim.
+        onInteractOutside={(e) => e.preventDefault()}
+        footer={
+          <>
+            {account && (
+              <Button
+                type="button"
+                variant="ghost"
+                iconLeft={Trash2}
+                className="mr-auto"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={saving}
+              >
+                Supprimer
+              </Button>
+            )}
+            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+              Annuler
+            </Button>
+            <Button type="submit" form={formId} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </>
+        }
+      >
+        <form id={formId} onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+          <Field label="Nom" error={submitted && name.trim() === '' ? 'Le nom est obligatoire.' : undefined}>
+            <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+          </Field>
+          <Field
+            label="Solde actuel"
+            error={submitted && balanceValue === null ? 'Montant illisible — par exemple 1 234,56.' : undefined}
+          >
+            <Input numeric value={balance} onChange={(e) => setBalance(e.target.value)} />
+          </Field>
+          <Switch label="Société" checked={isCompany} onCheckedChange={setIsCompany} />
+          {isCompany && (
+            <Switch label="Assujetti à la TVA" checked={vatApplicable} onCheckedChange={setVatApplicable} />
+          )}
+          <Field
+            label="Jour de paiement Visa"
+            hint="Jour du mois où la Visa est débitée."
+            error={submitted && paymentDay === 'invalid' ? 'Un jour entre 1 et 31, ou vide.' : undefined}
+          >
+            <Input
+              numeric
+              inputMode="numeric"
+              value={paymentDayText}
+              onChange={(e) => setPaymentDayText(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Jour de clôture Visa"
+            hint="Une facture datée après ce jour passe sur le relevé suivant ; vide, elle est payée au jour de paiement."
+            error={submitted && closingDay === 'invalid' ? 'Un jour entre 1 et 31, ou vide.' : undefined}
+          >
+            <Input
+              numeric
+              inputMode="numeric"
+              value={closingDayText}
+              onChange={(e) => setClosingDayText(e.target.value)}
+            />
+          </Field>
+          {error && (
+            <Callout tone="negative" title="Le compte n’a pas été enregistré.">
+              Vérifiez les champs, puis réessayez. (détail : {error.replace(/[.\s]+$/, '')})
+            </Callout>
+          )}
+        </form>
+      </Dialog>
 
-      <label className="field">
-        <span>Name</span>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          autoFocus
+      {confirmingDelete && account && (
+        <ConfirmDialog
+          title="Supprimer ce compte ?"
+          description={`« ${account.name} » et tous ses flux, catégories et comptes du plan comptable seront supprimés définitivement.`}
+          confirmLabel="Supprimer le compte"
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={async () => {
+            await deleteAccount(account.id)
+            toast('Compte supprimé.', { tone: 'positive' })
+            onDeleted(account.id)
+          }}
         />
-      </label>
-
-      <label className="field">
-        <span>Current balance</span>
-        <input
-          type="number"
-          step="0.01"
-          value={currentBalance}
-          onChange={(e) => setCurrentBalance(e.target.value)}
-          required
-        />
-      </label>
-
-      <label className="field field-row">
-        <span>Company</span>
-        <input
-          type="checkbox"
-          checked={isCompany}
-          onChange={(e) => setIsCompany(e.target.checked)}
-        />
-      </label>
-
-      {isCompany && (
-        <label className="field field-row">
-          <span>VAT applicable</span>
-          <input
-            type="checkbox"
-            checked={vatApplicable}
-            onChange={(e) => setVatApplicable(e.target.checked)}
-          />
-        </label>
       )}
-
-      <label className="field">
-        <span>Visa payment day</span>
-        <input
-          type="number"
-          min="1"
-          max="31"
-          placeholder="Day of month Visa is charged"
-          value={visaPaymentDay}
-          onChange={(e) => setVisaPaymentDay(e.target.value)}
-        />
-      </label>
-
-      <label className="field">
-        <span>Visa closing day</span>
-        <input
-          type="number"
-          min="1"
-          max="31"
-          placeholder="Day of month the statement closes"
-          value={visaClosingDay}
-          onChange={(e) => setVisaClosingDay(e.target.value)}
-        />
-        <span className="form-hint">
-          Invoices dated after this day fall on the next statement. Closing 25 and payment 5:
-          an invoice on Mar 26 is paid May 5, one on Mar 25 is paid Apr 5. Leave empty to pay
-          on the payment day directly.
-        </span>
-      </label>
-
-      {error && <p className="form-error">{error}</p>}
-
-      <div className="form-actions">
-        {onDelete && (
-          <button type="button" className="btn-danger" onClick={handleDelete} disabled={saving}>
-            Delete
-          </button>
-        )}
-        <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-        <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    </form>
+    </>
   )
 }
