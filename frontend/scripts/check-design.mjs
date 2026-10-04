@@ -20,8 +20,6 @@ const LEGACY = [
   'src/accountingDisplay.ts',
   'src/components/AnnualAccountsView.tsx',
   'src/components/CategoriesView.tsx',
-  'src/components/FlowBulkEditDialog.tsx',
-  'src/components/FlowGenerator.tsx',
   'src/components/LedgerAccountsView.tsx',
   'src/components/VatView.tsx',
   'src/components/ui',

@@ -1,4 +1,19 @@
 import { useState } from 'react'
+import { ArrowLeft, Pencil, Sparkles, X } from 'lucide-react'
+import {
+  Button,
+  Callout,
+  Card,
+  DataTable,
+  Dialog,
+  Field,
+  IconButton,
+  Select,
+  Textarea,
+  cn,
+  toast,
+  type DataTableColumn,
+} from '@qvanderlinden/ui'
 import { createFlowsBulk, generateFlows } from '../api/client'
 import type {
   AccountRead,
@@ -7,17 +22,14 @@ import type {
   FlowKind,
   FlowRead,
   LedgerAccountRead,
-  PaymentMethod,
 } from '../api/types'
-import {
-  FLOW_KIND_LABELS,
-  PAYMENT_METHOD_LABELS,
-  amountClass,
-  formatDate,
-  formatFlowAmount,
-} from '../accountingDisplay'
-import { FlowForm, PAYMENT_METHODS } from './FlowForm'
-import { LinesEditor, emptyLine, linesToPayload, linesTotals, type LineDraft } from './LinesEditor'
+import { frameError } from '../errors'
+import { countLabel, eur, formatDate, signedFlowAmount, toApiDecimal } from '../format'
+import { CountLabel } from './CountLabel'
+import { FlowForm } from './FlowForm'
+import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
+import { buildProposals } from './generatorProposals'
+import { LinesEditor, emptyLine, linesToPayload, linesTotals, linesValid, type LineDraft } from './LinesEditor'
 
 type Step = 'describe' | 'generating' | 'review'
 
@@ -31,18 +43,19 @@ interface FlowGeneratorProps {
   onInserted: () => Promise<void>
 }
 
-// Wraps an unsaved FlowCreate proposal as a pseudo-FlowRead so the existing
-// FlowForm can edit it - FlowForm only reads name/category/dates/method/paid/
-// lines, so the fake id/sort_key fields are never load-bearing.
-//
-// This is deliberately not routed through the LinesEditor linesToDrafts /
-// linesToPayload pair: those convert between FlowLineRead and LineDraft, but
-// this function goes the other way, synthesizing a fake FlowLineRead (with a
-// negative id and a sort_key) from an already-built FlowLineCreate. There is
-// no canonical helper for that direction. It carries ledger_account_id
-// through explicitly below - keep that if this function is ever touched.
+interface ProposalRow {
+  id: number
+  proposal: FlowCreate
+}
+
+// Wraps an unsaved FlowCreate proposal as a pseudo-FlowRead so FlowForm can
+// edit it - FlowForm only reads name/category/dates/method/paid/lines, so the
+// fake id/sort_key fields are never load-bearing. Not routed through
+// linesToDrafts/linesToPayload: those convert between FlowLineRead and
+// LineDraft, while this synthesizes a FlowLineRead from a FlowLineCreate. It
+// carries ledger_account_id through explicitly - keep that if this changes.
 function proposalToFlowRead(proposal: FlowCreate, accountId: number): FlowRead {
-  const totals = linesTotals(proposal.lines)
+  const totals = linesTotals(proposal.lines, proposal.reverse_charge ?? false)
   return {
     id: -1,
     account_id: accountId,
@@ -64,12 +77,15 @@ function proposalToFlowRead(proposal: FlowCreate, accountId: number): FlowRead {
       sort_key: String(i),
       ledger_account_id: l.ledger_account_id ?? null,
     })),
-    amount_net: totals.net.toFixed(2),
-    amount_vat: totals.vat.toFixed(2),
-    amount_gross: totals.gross.toFixed(2),
+    amount_net: toApiDecimal(totals.net),
+    amount_vat: toApiDecimal(totals.vat),
+    amount_gross: toApiDecimal(totals.gross),
   }
 }
 
+// The LLM-assisted generator in three steps: describe the recurring rule and
+// the template applied to every occurrence, wait for the proposal, then
+// review (edit or remove rows) and insert them in one batch.
 export function FlowGenerator({
   kind,
   account,
@@ -81,228 +97,248 @@ export function FlowGenerator({
   const [step, setStep] = useState<Step>('describe')
   const [description, setDescription] = useState('')
   // Template fields, entered once and applied to every generated occurrence.
-  const [categoryId, setCategoryId] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [categoryId, setCategoryId] = useState(NONE)
+  const [paymentMethod, setPaymentMethod] = useState(NONE)
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [proposals, setProposals] = useState<FlowCreate[]>([])
   const [model, setModel] = useState('')
   const [provider, setProvider] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Generation and insertion fail on different steps: each error stays on its own.
+  const [generateError, setGenerateError] = useState<string | null>(null)
+  const [insertError, setInsertError] = useState<string | null>(null)
   const [inserting, setInserting] = useState(false)
 
-  const noPayment = paymentMethod === ''
+  const linesOk = linesValid(lines)
 
   async function handleGenerate() {
+    // The button is disabled meanwhile; this keeps an unreadable amount out of
+    // the request all the same.
+    if (!linesOk) return
     setStep('generating')
-    setError(null)
+    setGenerateError(null)
     try {
       const response = await generateFlows(account.id, { description })
-      const templateLines = linesToPayload(lines)
-      const isVisa = paymentMethod === 'visa'
       setProposals(
-        response.occurrences.map((occ) => ({
-          name: occ.name,
-          kind,
-          category_id: categoryId === '' ? null : Number(categoryId),
-          invoice_date: occ.invoice_date,
-          // A "No payment" or Visa template nulls the date - Visa flows never
-          // store one (the projection derives it from the account's Visa
-          // payment day); otherwise fall back to the invoice date when the
-          // model left payment_date null.
-          payment_date: noPayment || isVisa ? null : (occ.payment_date ?? occ.invoice_date),
-          payment_method: noPayment ? null : (paymentMethod as PaymentMethod),
-          paid: false,
-          lines: templateLines.map((l) => ({ ...l })),
-        })),
+        buildProposals(response.occurrences, kind, { categoryId, paymentMethod, lines: linesToPayload(lines) }),
       )
       setModel(response.model)
       setProvider(response.provider)
+      setInsertError(null)
       setStep('review')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Generation failed')
+      setGenerateError(frameError(err, { client: 'Reformulez la règle, puis réessayez.' }))
       setStep('describe')
     }
   }
 
   async function handleInsert() {
     setInserting(true)
-    setError(null)
+    setInsertError(null)
     try {
       await createFlowsBulk(account.id, proposals)
+      toast(`${countLabel(proposals.length, 'flux inséré', 'flux insérés')}.`, { tone: 'positive' })
       await onInserted()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Insert failed')
+      setInsertError(frameError(err))
       setInserting(false)
     }
   }
 
-  const kindLabel = FLOW_KIND_LABELS[kind].toLowerCase()
+  const reviewing = step === 'review'
+  const generating = step === 'generating'
+  const busy = generating || inserting
+
+  // The description, template and proposals are lost on close: nothing closes
+  // the dialog while a request runs, so a late failure stays visible.
+  function requestClose() {
+    if (!busy) onClose()
+  }
+
+  const columns: DataTableColumn<ProposalRow>[] = [
+    {
+      key: 'invoice_date',
+      header: 'date de facture',
+      render: (_, row) => <span className="numeric whitespace-nowrap">{formatDate(row.proposal.invoice_date, 'full')}</span>,
+    },
+    {
+      key: 'payment_date',
+      header: 'date de paiement',
+      render: (_, row) =>
+        row.proposal.payment_date ? (
+          <span className="numeric whitespace-nowrap">{formatDate(row.proposal.payment_date, 'full')}</span>
+        ) : (
+          <span className="text-fg-subtle">—</span>
+        ),
+    },
+    {
+      key: 'name',
+      header: 'nom',
+      render: (_, row) => <span className="font-medium text-fg-strong">{row.proposal.name}</span>,
+    },
+    {
+      key: 'amount',
+      header: 'montant',
+      numeric: true,
+      render: (_, row) => (
+        <span className={cn('whitespace-nowrap', row.proposal.kind === 'revenue' && 'text-positive-fg')}>
+          {eur(signedFlowAmount(row.proposal.kind, linesTotals(row.proposal.lines, row.proposal.reverse_charge ?? false).gross))}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (_, row) => (
+        <div className="flex justify-end gap-1">
+          <IconButton
+            size="sm"
+            icon={Pencil}
+            label={`Modifier ${row.proposal.name}`}
+            onClick={() => setEditingIndex(row.id)}
+          />
+          <IconButton
+            size="sm"
+            icon={X}
+            label={`Retirer ${row.proposal.name}`}
+            onClick={() => setProposals((prev) => prev.filter((_, j) => j !== row.id))}
+          />
+        </div>
+      ),
+    },
+  ]
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-        {step !== 'review' && (
-          <div className="flow-form">
-            <h2>Generate {kindLabel} flows</h2>
-            <label className="field">
-              <span>Describe the recurring rule</span>
-              <textarea
+    <>
+      <Dialog
+        open
+        size="lg"
+        onClose={requestClose}
+        title={reviewing ? 'Vérifier les flux générés' : kind === 'revenue' ? 'Générer des revenus' : 'Générer des dépenses'}
+        // The description, template and proposals are lost on close, so a
+        // stray click on the scrim doesn't close it.
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => busy && e.preventDefault()}
+        footer={
+          reviewing ? (
+            <>
+              <Button type="button" variant="ghost" iconLeft={ArrowLeft} onClick={() => setStep('describe')} disabled={inserting}>
+                Retour
+              </Button>
+              <span className="flex-1" />
+              <Button type="button" variant="secondary" onClick={onClose} disabled={inserting}>
+                Annuler
+              </Button>
+              <Button type="button" onClick={handleInsert} disabled={inserting || proposals.length === 0}>
+                {inserting ? (
+                  'Insertion…'
+                ) : (
+                  <span>
+                    Insérer <CountLabel n={proposals.length} singular="flux" plural="flux" />
+                  </span>
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" variant="secondary" onClick={onClose} disabled={generating}>
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                iconLeft={Sparkles}
+                onClick={handleGenerate}
+                disabled={generating || description.trim() === '' || !linesOk}
+              >
+                {generating ? 'Génération…' : 'Générer'}
+              </Button>
+            </>
+          )
+        }
+      >
+        {reviewing ? (
+          <div className="flex flex-col gap-4">
+            <p className="type-body-sm text-fg-muted">
+              <CountLabel n={proposals.length} singular="flux proposé" plural="flux proposés" /> (modèle : {model}
+              {provider ? ` via ${provider}` : ''}). Modifiez ou retirez des lignes, puis insérez.
+            </p>
+            <Card padding={false}>
+              <DataTable
+                compact
+                columns={columns}
+                rows={proposals.map((proposal, i) => ({ id: i, proposal }))}
+                emptyMessage="Toutes les lignes ont été retirées — revenez en arrière pour régénérer."
+              />
+            </Card>
+            {insertError && (
+              <Callout tone="negative" title="Les flux n’ont pas été insérés.">
+                {insertError}
+              </Callout>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <Field
+              label="Règle récurrente"
+              hint="L’IA ne génère que les noms et les dates ; la catégorie, le moyen de paiement et les montants ci-dessous s’appliquent à chaque flux."
+            >
+              <Textarea
                 rows={3}
-                placeholder="e.g. cotisations sociales ~1000€ par trimestre, payées par domiciliation le 5 du premier mois du trimestre"
+                placeholder="Ex. cotisations sociales ~1000 € par trimestre, payées par domiciliation le 5 du premier mois du trimestre"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                autoFocus
+                disabled={generating}
               />
-            </label>
-            <p className="text-secondary generator-hint">
-              The AI generates only the names and dates. Category, payment method and amounts
-              below are applied to every generated flow.
-            </p>
-
-            <label className="field">
-              <span>Category</span>
-              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">— None —</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({Number(c.tax_deduction_rate)}% tax deductible)
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field">
-              <span>Payment method</span>
-              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                <option value="">No payment (compte courant associés)</option>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m} disabled={m === 'visa' && account.visa_payment_day == null}>
-                    {PAYMENT_METHOD_LABELS[m]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Catégorie">
+                <Select
+                  value={categoryId}
+                  onValueChange={setCategoryId}
+                  disabled={generating}
+                  options={categoryOptions(categories)}
+                />
+              </Field>
+              <Field label="Moyen de paiement">
+                <Select
+                  value={paymentMethod}
+                  onValueChange={setPaymentMethod}
+                  disabled={generating}
+                  options={paymentMethodOptions(account)}
+                />
+              </Field>
+            </div>
             <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
-
-            {error && <p className="form-error">{error}</p>}
-
-            <div className="form-actions">
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={step === 'generating'}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleGenerate}
-                disabled={step === 'generating' || description.trim() === ''}
-              >
-                {step === 'generating' ? 'Generating…' : '✨ Generate'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'review' && (
-          <div className="flow-form">
-            <h2>Review generated flows</h2>
-            <p className="text-secondary generator-hint">
-              {proposals.length} proposed flow{proposals.length === 1 ? '' : 's'} (model: {model}
-              {provider ? ` via ${provider}` : ''}).
-              Edit or remove rows, then insert.
-            </p>
-
-            {proposals.length === 0 ? (
-              <p className="empty-state">All rows removed — go back to regenerate.</p>
-            ) : (
-              <div className="table-wrap generator-table">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Invoice date</th>
-                      <th>Payment date</th>
-                      <th>Name</th>
-                      <th className="amount-col">Amount</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {proposals.map((proposal, i) => (
-                      <tr key={i}>
-                        <td>{formatDate(proposal.invoice_date)}</td>
-                        <td>{proposal.payment_date ? formatDate(proposal.payment_date) : '—'}</td>
-                        <td className="cell-title">{proposal.name}</td>
-                        <td className={`amount-cell ${amountClass(proposal.kind)}`}>
-                          {formatFlowAmount(proposal.kind, linesTotals(proposal.lines).gross.toFixed(2))}
-                        </td>
-                        <td className="amount-col">
-                          <span className="table-row-actions">
-                            <button type="button" className="edit-flow-button" onClick={() => setEditingIndex(i)}>
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="line-remove"
-                              onClick={() => setProposals((prev) => prev.filter((_, j) => j !== i))}
-                              aria-label={`Remove ${proposal.name}`}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {!linesOk && (
+              <p className="type-body-sm text-negative-fg">
+                Un montant ou un taux est illisible — corrigez les cases en rouge.
+              </p>
             )}
-
-            {error && <p className="form-error">{error}</p>}
-
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setStep('describe')}
-                disabled={inserting}
-              >
-                Back
-              </button>
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={inserting}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleInsert}
-                disabled={inserting || proposals.length === 0}
-              >
-                {inserting
-                  ? 'Inserting…'
-                  : `Insert ${proposals.length} flow${proposals.length === 1 ? '' : 's'}`}
-              </button>
-            </div>
+            {generateError && (
+              <Callout tone="negative" title="La génération a échoué.">
+                {generateError}
+              </Callout>
+            )}
           </div>
         )}
+      </Dialog>
 
-        {editingIndex !== null && proposals[editingIndex] && (
-          <FlowForm
-            kind={proposals[editingIndex].kind}
-            account={account}
-            categories={categories}
-            ledgerAccounts={ledgerAccounts}
-            initialFlow={proposalToFlowRead(proposals[editingIndex], account.id)}
-            onCancel={() => setEditingIndex(null)}
-            // Writes back into the local proposals array - nothing touches
-            // the API until the final bulk insert.
-            onSubmit={async (payload) => {
-              setProposals((prev) => prev.map((p, j) => (j === editingIndex ? payload : p)))
-              setEditingIndex(null)
-            }}
-          />
-        )}
-      </div>
-    </div>
+      {editingIndex !== null && proposals[editingIndex] && (
+        <FlowForm
+          kind={proposals[editingIndex].kind}
+          account={account}
+          categories={categories}
+          ledgerAccounts={ledgerAccounts}
+          initialFlow={proposalToFlowRead(proposals[editingIndex], account.id)}
+          onCancel={() => setEditingIndex(null)}
+          // Writes back into the local proposals - nothing touches the API
+          // until the final bulk insert.
+          onSubmit={async (payload) => {
+            setProposals((prev) => prev.map((p, j) => (j === editingIndex ? payload : p)))
+            setEditingIndex(null)
+          }}
+        />
+      )}
+    </>
   )
 }
