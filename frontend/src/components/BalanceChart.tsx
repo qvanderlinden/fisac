@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Table2 } from 'lucide-react'
 import { Button, Card, DataTable, type DataTableColumn } from '@qvanderlinden/ui'
 import { addMonthsFrom } from '../accountingDisplay'
@@ -88,6 +88,17 @@ export function BalanceChart({
   const [selected, setSelected] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
 
+  // A different series (a deleted batch, a wider window) can put the same
+  // index on another day, so the choice starts over; a refetch with the same
+  // dates (a paid toggle, an amount edit) keeps the chosen day. Adjusted while
+  // rendering, so no frame draws the old index over the new points.
+  const seriesKey = points.map((p) => p.date).join(',')
+  const [shownSeriesKey, setShownSeriesKey] = useState(seriesKey)
+  if (seriesKey !== shownSeriesKey) {
+    setShownSeriesKey(seriesKey)
+    setSelected(null)
+  }
+
   const allPoints = useMemo(
     () => [{ date: asOf, balance: startingBalance }, ...points],
     [asOf, startingBalance, points],
@@ -149,22 +160,16 @@ export function BalanceChart({
   // past the window is not a gap in our knowledge, so it keeps its colour.
   const hasForecastGap = nextFlowDate === null && maxTime > times[times.length - 1]
 
-  // A different series (a deleted batch, a wider window) can put the same
-  // index on another day, so the choice starts over; a refetch with the same
-  // dates (a paid toggle, an amount edit) keeps the chosen day.
-  const seriesKey = points.map((p) => p.date).join(',')
-  useEffect(() => {
-    setSelected(null)
-  }, [seriesKey])
-
-  // Clamped too: for the render before that reset lands, a stale index must
-  // not point past the end of a shorter series.
+  // Clamped as a second guard: a stale index must never point past the end of
+  // a shorter series.
   const activeIndex = selected !== null && selected < allPoints.length ? selected : allPoints.length - 1
   const active = allPoints[activeIndex]
   // allPoints[0] is the synthetic asOf entry, with no flows of its own.
   const activePointIndex = activeIndex > 0 ? activeIndex - 1 : null
 
-  useEffect(() => {
+  // Layout effect: the parent lists this day's flows, and it must have the
+  // new index before the frame is painted, not one frame later.
+  useLayoutEffect(() => {
     onHoverPointChange?.(activePointIndex)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePointIndex])
@@ -203,7 +208,13 @@ export function BalanceChart({
         ) : null
       }
       actions={
-        <Button variant="ghost" size="sm" iconLeft={Table2} onClick={() => setShowTable((v) => !v)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={Table2}
+          aria-expanded={showTable}
+          onClick={() => setShowTable((v) => !v)}
+        >
           {showTable ? 'Masquer le tableau' : 'Voir en tableau'}
         </Button>
       }
@@ -237,7 +248,7 @@ export function BalanceChart({
                     y={gy}
                     textAnchor="end"
                     dy="0.32em"
-                    className="fill-chart-axis font-mono text-[10px]"
+                    className="numeric fill-chart-axis text-[10px]"
                   >
                     {formatNumber(Math.round(value))}
                   </text>
@@ -251,7 +262,7 @@ export function BalanceChart({
                 x={x(tick)}
                 y={HEIGHT - PAD_BOTTOM + 18}
                 textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
-                className="fill-chart-axis font-mono text-[10px]"
+                className="numeric fill-chart-axis text-[10px]"
               >
                 {formatDate(new Date(tick))}
               </text>

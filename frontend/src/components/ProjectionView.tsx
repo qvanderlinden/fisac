@@ -82,6 +82,10 @@ function BalanceDialog({
   const [error, setError] = useState<string | null>(null)
   const value = parseDecimal(draft)
 
+  function requestClose() {
+    if (!saving) onClose()
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitted(true)
@@ -101,8 +105,13 @@ function BalanceDialog({
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={requestClose}
       title="Solde actuel"
+      // The typed value is lost on close, so a stray click on the scrim doesn't
+      // close it; Escape, the close button and "Annuler" do. While the save
+      // runs nothing closes it: a failure arriving late must stay visible.
+      onInteractOutside={(e) => e.preventDefault()}
+      onEscapeKeyDown={(e) => saving && e.preventDefault()}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
@@ -141,6 +150,9 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
   const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountRead[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [windowMonths, setWindowMonths] = useState(3)
+  // The window `projection` was fetched for: the chart draws its horizon from
+  // this, so a failed switch never stretches the old points over a new window.
+  const [loadedWindowMonths, setLoadedWindowMonths] = useState(3)
   const [editingFlow, setEditingFlow] = useState<FlowRead | null>(null)
   const [editingBatchCount, setEditingBatchCount] = useState<number | undefined>(undefined)
   const [editingBalance, setEditingBalance] = useState(false)
@@ -149,18 +161,28 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
   // Only the latest request may land: switching account or window quickly
   // must not let an older, slower response overwrite a newer one.
   const requestSeq = useRef(0)
+  // What is selected right now. refresh() runs from callbacks that outlive the
+  // render that made them (after a save, a toggle), so it reads the selection
+  // here rather than from its closure; a late call loads the current account
+  // and window, never the one it was created for.
+  const selection = useRef({ accountId: account.id, windowMonths })
+  useEffect(() => {
+    selection.current = { accountId: account.id, windowMonths }
+  })
 
   async function refresh() {
     const seq = ++requestSeq.current
-    const toDate = addMonthsFrom(todayDateInputValue(), windowMonths)
+    const { accountId, windowMonths: months } = selection.current
+    const toDate = addMonthsFrom(todayDateInputValue(), months)
     try {
       const [fetched, fetchedCategories, fetchedLedgerAccounts] = await Promise.all([
-        fetchProjection(account.id, toDate),
-        listCategories(account.id),
-        listLedgerAccounts(account.id),
+        fetchProjection(accountId, toDate),
+        listCategories(accountId),
+        listLedgerAccounts(accountId),
       ])
       if (seq !== requestSeq.current) return
       setProjection(fetched)
+      setLoadedWindowMonths(months)
       setCategories(fetchedCategories)
       setLedgerAccounts(fetchedLedgerAccounts)
       setLoadError(null)
@@ -174,10 +196,11 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
   useEffect(() => {
     setProjection(null)
     setLoadError(null)
+    setHoveredPointIndex(null)
+    setFlowSearch('')
   }, [account.id])
 
   useEffect(() => {
-    setFlowSearch('')
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id, windowMonths])
@@ -204,7 +227,7 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
         try {
           batchCount = (await listFlows(account.id)).filter((f) => f.batch_id === full.batch_id).length
         } catch {
-          batchCount = undefined
+          // The count is optional: the editor opens without it.
         }
       }
       setEditingBatchCount(batchCount)
@@ -228,20 +251,20 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
     />
   )
 
+  const loadFailure = loadError ? (
+    <Callout tone="negative" title="La projection n’a pas pu être chargée.">
+      {loadError}{' '}
+      <Button variant="link" onClick={refresh}>
+        Réessayer
+      </Button>
+    </Callout>
+  ) : null
+
   if (projection === null) {
     return (
       <div className="flex flex-col gap-6">
         {header}
-        {loadError ? (
-          <Callout tone="negative" title="La projection n’a pas pu être chargée.">
-            {loadError}{' '}
-            <Button variant="link" onClick={refresh}>
-              Réessayer
-            </Button>
-          </Callout>
-        ) : (
-          <p className="type-body-sm text-fg-muted">Chargement…</p>
-        )}
+        {loadFailure ?? <p className="type-body-sm text-fg-muted">Chargement…</p>}
       </div>
     )
   }
@@ -308,7 +331,8 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
             type="button"
             className="cursor-pointer"
             onClick={() => togglePaid(row.flow)}
-            aria-label={row.flow.paid ? `${row.flow.name} : marquer à payer` : `${row.flow.name} : marquer payé`}
+            // The name starts with the visible text (WCAG 2.5.3).
+            aria-label={`${row.flow.name} : ${row.flow.paid ? 'payé' : 'à payer'} — marquer ${row.flow.paid ? 'à payer' : 'payé'}`}
           >
             {row.flow.paid ? 'payé' : 'à payer'}
           </button>
@@ -327,6 +351,8 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
   return (
     <div className="flex flex-col gap-6">
       {header}
+
+      {loadFailure}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard className="relative" label="Solde actuel" value={Number(projection.starting_balance)} format="eur">
@@ -361,7 +387,7 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
         startingBalance={Number(projection.starting_balance)}
         points={projection.points.map((p) => ({ date: p.date, balance: Number(p.balance) }))}
         nextFlowDate={projection.next_flow_date}
-        windowMonths={windowMonths}
+        windowMonths={loadedWindowMonths}
         onHoverPointChange={setHoveredPointIndex}
       >
         <div className="border-t border-line-hairline px-6 py-4">
@@ -420,9 +446,9 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
           columns={columns}
           rows={upcoming}
           emptyMessage={
-            projection.points.length === 0
-              ? 'Aucun flux à venir sur la période.'
-              : `Aucun flux ne correspond à « ${flowSearch.trim()} ».`
+            searchTerm !== ''
+              ? `Aucun flux ne correspond à « ${flowSearch.trim()} ».`
+              : 'Aucun flux à venir sur la période.'
           }
         />
       </Card>
