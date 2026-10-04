@@ -282,38 +282,33 @@ export function ProjectionView({ account, onAccountChange }: ProjectionViewProps
       )}
 
       {editingFlow && (
-        <div className="modal-backdrop" onClick={() => setEditingFlow(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <FlowForm
-              kind={editingFlow.kind}
-              account={account}
-              categories={categories}
-              ledgerAccounts={ledgerAccounts}
-              initialFlow={editingFlow}
-              onCancel={() => setEditingFlow(null)}
-              onSubmit={async (payload) => {
-                await updateFlow(account.id, editingFlow.id, payload)
-                setEditingFlow(null)
-                await refresh()
-              }}
-              onDelete={async () => {
-                await deleteFlow(account.id, editingFlow.id)
-                setEditingFlow(null)
-                await refresh()
-              }}
-              onDeleteBatch={
-                editingFlow.batch_id != null
-                  ? async () => {
-                      if (!confirm('Delete every flow created in this batch?')) return
-                      await deleteFlowBatch(account.id, editingFlow.batch_id!)
-                      setEditingFlow(null)
-                      await refresh()
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        </div>
+        <FlowForm
+          kind={editingFlow.kind}
+          account={account}
+          categories={categories}
+          ledgerAccounts={ledgerAccounts}
+          initialFlow={editingFlow}
+          onCancel={() => setEditingFlow(null)}
+          onSubmit={async (payload) => {
+            await updateFlow(account.id, editingFlow.id, payload)
+            setEditingFlow(null)
+            await refresh()
+          }}
+          onDelete={async () => {
+            await deleteFlow(account.id, editingFlow.id)
+            setEditingFlow(null)
+            await refresh()
+          }}
+          onDeleteBatch={
+            editingFlow.batch_id != null
+              ? async () => {
+                  await deleteFlowBatch(account.id, editingFlow.batch_id!)
+                  setEditingFlow(null)
+                  await refresh()
+                }
+              : undefined
+          }
+        />
       )}
     </div>
   )

@@ -287,24 +287,20 @@ export function FlowGenerator({
         )}
 
         {editingIndex !== null && proposals[editingIndex] && (
-          <div className="modal-backdrop" onClick={() => setEditingIndex(null)}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <FlowForm
-                kind={proposals[editingIndex].kind}
-                account={account}
-                categories={categories}
-                ledgerAccounts={ledgerAccounts}
-                initialFlow={proposalToFlowRead(proposals[editingIndex], account.id)}
-                onCancel={() => setEditingIndex(null)}
-                // Writes back into the local proposals array - nothing touches
-                // the API until the final bulk insert.
-                onSubmit={async (payload) => {
-                  setProposals((prev) => prev.map((p, j) => (j === editingIndex ? payload : p)))
-                  setEditingIndex(null)
-                }}
-              />
-            </div>
-          </div>
+          <FlowForm
+            kind={proposals[editingIndex].kind}
+            account={account}
+            categories={categories}
+            ledgerAccounts={ledgerAccounts}
+            initialFlow={proposalToFlowRead(proposals[editingIndex], account.id)}
+            onCancel={() => setEditingIndex(null)}
+            // Writes back into the local proposals array - nothing touches
+            // the API until the final bulk insert.
+            onSubmit={async (payload) => {
+              setProposals((prev) => prev.map((p, j) => (j === editingIndex ? payload : p)))
+              setEditingIndex(null)
+            }}
+          />
         )}
       </div>
     </div>
