@@ -18,7 +18,6 @@ const srcDir = join(root, 'src')
 // migration task deletes its entries; the cleanup task deletes the list.
 const LEGACY = [
   'src/accountingDisplay.ts',
-  'src/components/AnnualAccountsView.tsx',
   'src/components/ui',
   'src/lib/utils.ts',
   'src/styles.css',
