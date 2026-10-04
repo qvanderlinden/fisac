@@ -134,11 +134,17 @@ export function countLabel(n: number, singular: string, plural: string): string 
 }
 
 /**
- * A VAT rate as typed ("21", "5,5", blank for 0) as an API decimal string, or
- * null when it can't be sent as typed: unreadable, a third decimal, below 0 or
- * above 100. Validation and the request share this one reading.
+ * A percentage (0-100) as typed ("21", "5,5") as an API decimal string, a blank
+ * field reading as `blank`; null when it can't be sent as typed: unreadable, a
+ * third decimal, below 0 or above 100. Validation and the request share this
+ * one reading.
  */
-export function parseVatRate(text: string): string | null {
-  const rate = text.trim() === '' ? '0' : parseDecimal(text)
+export function parseRate(text: string, blank: string): string | null {
+  const rate = text.trim() === '' ? blank : parseDecimal(text)
   return rate === null || Number(rate) < 0 || Number(rate) > 100 ? null : rate
+}
+
+/** A VAT rate as typed, blank for 0. */
+export function parseVatRate(text: string): string | null {
+  return parseRate(text, '0')
 }

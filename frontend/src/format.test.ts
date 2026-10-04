@@ -6,6 +6,7 @@ import {
   formatDate,
   formatRate,
   parseDecimal,
+  parseRate,
   parseVatRate,
   pluralNoun,
   rateInput,
@@ -183,5 +184,27 @@ describe('parseVatRate', () => {
     expect(parseVatRate('21x')).toBeNull()
     expect(parseVatRate('-1')).toBeNull()
     expect(parseVatRate('101')).toBeNull()
+  })
+})
+
+describe('parseRate', () => {
+  it('reads a rate through parseDecimal, French comma included', () => {
+    expect(parseRate('12,5', '100')).toBe('12.5')
+    expect(parseRate('50', '100')).toBe('50')
+    expect(parseRate('0', '100')).toBe('0')
+    expect(parseRate('100', '0')).toBe('100')
+  })
+
+  it('reads a blank rate as the given default', () => {
+    expect(parseRate('', '100')).toBe('100')
+    expect(parseRate('  ', '100')).toBe('100')
+    expect(parseRate('', '0')).toBe('0')
+  })
+
+  it('rejects text, a third decimal, negatives and above 100', () => {
+    expect(parseRate('abc', '100')).toBeNull()
+    expect(parseRate('12,125', '100')).toBeNull()
+    expect(parseRate('150', '100')).toBeNull()
+    expect(parseRate('-1', '100')).toBeNull()
   })
 })
