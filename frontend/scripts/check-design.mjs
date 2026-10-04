@@ -19,7 +19,6 @@ const srcDir = join(root, 'src')
 const LEGACY = [
   'src/accountingDisplay.ts',
   'src/components/AnnualAccountsView.tsx',
-  'src/components/VatView.tsx',
   'src/components/ui',
   'src/lib/utils.ts',
   'src/styles.css',
