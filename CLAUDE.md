@@ -10,11 +10,14 @@ projection over time.
 
 Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 `pyproject.toml`, pinned via `.python-version`), React + Vite frontend
-(PWA-capable via vite-plugin-pwa), Postgres via SQLAlchemy 2.x async + asyncpg
-+ Alembic, uv for Python deps.
+(PWA-capable via vite-plugin-pwa) built on the `@qvanderlinden/ui` design
+system (React 19, Tailwind CSS v4), Postgres via SQLAlchemy 2.x async +
+asyncpg + Alembic, uv for Python deps.
 
 There is no linter, type checker, or test suite configured for the Python side.
-The frontend is typechecked by `tsc -b` as part of `npm run build`.
+The frontend is typechecked by `tsc -b` as part of `npm run build`;
+`npm run test` runs its vitest unit tests (`src/format.ts`, `src/errors.ts`)
+and `npm run check:design` its design-system compliance guard.
 
 ## Layout
 
@@ -22,6 +25,8 @@ The frontend is typechecked by `tsc -b` as part of `npm run build`.
 fisac/
   frontend/              # React + Vite, own package.json
     src/
+    scripts/
+      check-design.mjs   # design-system compliance guard (npm run check:design)
   backend/
     alembic.ini
     migrations/
@@ -65,6 +70,13 @@ uv run uvicorn fisac.main:app --reload --port 8000
 cd frontend && npm install && npm run dev   # Vite on :5173, HMR
 ```
 
+The frontend depends on `@qvanderlinden/ui`, published to GitHub Packages:
+`frontend/.npmrc` maps the `@qvanderlinden` scope there and reads
+`NODE_AUTH_TOKEN`, so `npm install` / `npm ci` need `NODE_AUTH_TOKEN` set and
+exported, as a GitHub token with `read:packages`. The repo root's gitignored
+`.envrc` sets it; direnv loads it in an interactive shell, otherwise run
+`set -a && . ./.envrc && set +a` first (plain `source` leaves it unexported).
+
 Vite's dev server proxies `/api/*` to the local uvicorn on `:8000` (see
 `server.proxy` in `frontend/vite.config.ts`), so no CORS setup is needed.
 Serving vite from a remote workspace behind a proxy needs `host`,
@@ -72,6 +84,22 @@ Serving vite from a remote workspace behind a proxy needs `host`,
 the spot.
 
 Frontend build/typecheck: `cd frontend && npm run build` (`tsc -b && vite build`).
+Frontend checks: `npm run test` (vitest, run twice: default TZ, then
+`TZ=America/New_York`) and `npm run check:design`.
+
+## Frontend design system
+
+Every screen is built from `@qvanderlinden/ui` (the Ledger UI kit). Read
+`frontend/node_modules/@qvanderlinden/ui/SKILL.md` and its `docs/brand.md`
+before changing UI. In short: the package's components first, then the
+restyled primitives from `@qvanderlinden/ui/primitives`; brand utilities only
+(`bg-surface-*`, `text-fg-*`, `border-line-*`, `type-*`, `numeric`), never a
+raw colour; Lucide icons, no emoji; one `primary` Button per view; light only.
+Copy is French: lowercase navigation, tabs, tags and eyebrows, sentence case
+for headings and buttons. Money, rates and dates go through `src/format.ts`
+(the system's `formatDate` is English-only; `format.ts` has the French one).
+`npm run check:design` fails on the mechanical slips (emoji, hex colours,
+`toFixed(`, …).
 
 ## Database
 
@@ -108,8 +136,12 @@ sync → final), whose CMD runs `alembic upgrade head` then uvicorn on `:8000`.
 It expects `DATABASE_URL` in the environment and reaches Postgres over the
 network — it does not start one.
 
+The frontend stage installs `@qvanderlinden/ui` from GitHub Packages, so the
+build needs `NODE_AUTH_TOKEN` in the environment. It is passed as a BuildKit
+secret, mounted for the `npm ci` step only, and never lands in an image layer.
+
 ```bash
-docker build -t fisac .
+docker build --secret id=node_auth_token,env=NODE_AUTH_TOKEN -t fisac .
 ```
 
 ## Deployment
