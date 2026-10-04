@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react'
 import { Button, Callout, Dialog, Field, Input, Switch, toast } from '@qvanderlinden/ui'
 import { createAccount, deleteAccount, updateAccount } from '../api/client'
 import type { AccountCreate, AccountRead } from '../api/types'
-import { describeError } from '../errors'
+import { frameError } from '../errors'
 import { amountInput, parseDecimal } from '../format'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -49,8 +49,13 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
   const paymentDay = parseDay(paymentDayText)
   const closingDay = parseDay(closingDayText)
 
+  function requestClose() {
+    if (!saving) onClose()
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (saving) return
     setSubmitted(true)
     if (name.trim() === '' || balanceValue === null || paymentDay === 'invalid' || closingDay === 'invalid') {
       return
@@ -71,7 +76,7 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
       toast(account ? 'Compte enregistré.' : 'Compte créé.', { tone: 'positive' })
       onSaved(saved)
     } catch (err) {
-      setError(describeError(err))
+      setError(frameError(err))
       setSaving(false)
     }
   }
@@ -80,11 +85,13 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
     <>
       <Dialog
         open
-        onClose={onClose}
+        onClose={requestClose}
         title={account ? 'Modifier le compte' : 'Nouveau compte'}
         // Typed values are lost on close, so only Escape, the close button
-        // and "Annuler" close it, not a stray click on the scrim.
+        // and "Annuler" close it, not a stray click on the scrim. While the
+        // save runs nothing closes it: a failure arriving late must stay visible.
         onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => saving && e.preventDefault()}
         footer={
           <>
             {account && (
@@ -148,7 +155,7 @@ export function AccountForm({ account, onClose, onSaved, onDeleted }: AccountFor
           </Field>
           {error && (
             <Callout tone="negative" title="Le compte n’a pas été enregistré.">
-              Vérifiez les champs, puis réessayez. (détail : {error.replace(/[.\s]+$/, '')})
+              {error}
             </Callout>
           )}
         </form>

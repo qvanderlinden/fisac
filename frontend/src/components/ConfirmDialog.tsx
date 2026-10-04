@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Callout, Dialog } from '@qvanderlinden/ui'
-import { describeError } from '../errors'
+import { frameError } from '../errors'
 
 interface ConfirmDialogProps {
   title: string
@@ -26,18 +26,27 @@ export function ConfirmDialog({ title, description, confirmLabel, onConfirm, onC
     try {
       await onConfirm()
     } catch (err) {
-      setError(describeError(err))
+      setError(frameError(err, { client: 'Rechargez la page, puis réessayez.' }))
       setBusy(false)
       return
     }
     onClose()
   }
 
+  // While the action runs, a close request (X, Escape, scrim) is ignored:
+  // closing would swallow a failure that arrives a moment later.
+  function requestClose() {
+    if (!busy) onClose()
+  }
+
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={requestClose}
+      onEscapeKeyDown={(e) => busy && e.preventDefault()}
+      onInteractOutside={(e) => busy && e.preventDefault()}
       title={title}
+      description={description}
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
@@ -49,15 +58,11 @@ export function ConfirmDialog({ title, description, confirmLabel, onConfirm, onC
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <p className="type-body-sm text-fg-body">{description}</p>
-        {error && (
-          <Callout tone="negative" title="Action impossible">
-            {/* The detail is the server's own wording; the sentence around it says what to do. */}
-            Réessayez, ou annulez. (détail : {error.replace(/[.\s]+$/, '')})
-          </Callout>
-        )}
-      </div>
+      {error && (
+        <Callout tone="negative" title="Action impossible">
+          {error}
+        </Callout>
+      )}
     </Dialog>
   )
 }

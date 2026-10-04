@@ -33,3 +33,28 @@ export function describeError(err: unknown): string {
   }
   return body.trim() || `Erreur ${status}`
 }
+
+export interface ErrorLeads {
+  /** What to do after a 4xx (the request itself was refused). */
+  client?: string
+  /** What to do after a network failure, a 5xx or anything else. */
+  other?: string
+}
+
+const CLIENT_LEAD = 'Vérifiez les champs, puis réessayez.'
+const OTHER_LEAD = 'Réessayez dans un instant.'
+
+/**
+ * A failure as one French message that says what to do, then quotes the
+ * server's own (English) wording: "Réessayez dans un instant. (détail : …)."
+ * The lead depends on the HTTP status: a refused request (4xx) asks to check
+ * the input, anything else (network, 5xx) asks to retry. The detail loses its
+ * trailing stops and spaces so the message ends with exactly one full stop.
+ */
+export function frameError(err: unknown, leads: ErrorLeads = {}): string {
+  const status = httpStatus(err)
+  const refused = status !== null && status >= 400 && status < 500
+  const lead = refused ? (leads.client ?? CLIENT_LEAD) : (leads.other ?? OTHER_LEAD)
+  const detail = describeError(err).replace(/[.\s]+$/, '')
+  return detail === '' ? lead : `${lead} (détail : ${detail}).`
+}
