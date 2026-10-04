@@ -25,8 +25,16 @@ export function emptyLine(): LineDraft {
   return { description: '', amount_net: '', amount_gross: '', basis: 'net', vat_rate: '21', ledger_account_id: '' }
 }
 
+// Half-up to the cent like the backend's ROUND_HALF_UP; the 1e-9 absorbs float
+// noise (4,10 x 15 / 100 is 0.6149999999999999, not the tie 0,615 it is).
 function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100
+  return Math.round(n * 100 + 1e-9) / 100
+}
+
+// One line's VAT, in euros: net x rate % rounded to the cent. Working in
+// hundredths (net * rate) keeps the tie 21,50 x 21 % = 4,515 exactly on x.5.
+function lineVat(net: number, rate: number): number {
+  return Math.round(net * rate + 1e-9) / 100
 }
 
 function readNumber(text: string): number | null {
@@ -34,24 +42,32 @@ function readNumber(text: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-// Mirrors the backend's gross computation: net + per-line-rounded VAT.
-export function netToGross(net: string, vatRate: string): string {
+// Mirrors the backend's gross computation: net + per-line-rounded VAT. On a
+// reverse charge flow no VAT is paid, so the gross is the net (the VAT stays
+// notional, see linesTotals).
+export function netToGross(net: string, vatRate: string, reverseCharge = false): string {
   const amount = readNumber(net)
   if (amount === null) return ''
+  if (reverseCharge) return amountInput(round2(amount))
   const rate = readNumber(vatRate) ?? 0
-  return amountInput(round2(amount + round2((amount * rate) / 100)))
+  return amountInput(round2(amount + lineVat(amount, rate)))
 }
 
-export function grossToNet(gross: string, vatRate: string): string {
+export function grossToNet(gross: string, vatRate: string, reverseCharge = false): string {
   const amount = readNumber(gross)
   if (amount === null) return ''
+  if (reverseCharge) return amountInput(round2(amount))
   const rate = readNumber(vatRate) ?? 0
   return amountInput(round2(amount / (1 + rate / 100)))
 }
 
 // Client-side preview of the totals the backend computes from the lines (net
-// + per-line-rounded VAT = gross). Accepts drafts and API lines alike.
-export function linesTotals(lines: { amount_net: string; vat_rate?: string | null }[]): {
+// + per-line-rounded VAT = gross; on a reverse charge flow gross = net while
+// the notional VAT is still reported). Accepts drafts and API lines alike.
+export function linesTotals(
+  lines: { amount_net: string; vat_rate?: string | null }[],
+  reverseCharge = false,
+): {
   net: number
   vat: number
   gross: number
@@ -63,41 +79,46 @@ export function linesTotals(lines: { amount_net: string; vat_rate?: string | nul
     if (amount === null) continue
     const rate = readNumber(line.vat_rate ?? '0') ?? 0
     net += amount
-    vat += round2((amount * rate) / 100)
+    vat += lineVat(amount, rate)
   }
-  return { net: round2(net), vat: round2(vat), gross: round2(net + vat) }
+  return { net: round2(net), vat: round2(vat), gross: round2(reverseCharge ? net : net + vat) }
 }
 
+// The backend stores a net as Numeric(12,2): ten billion and up is rejected.
+const MAX_NET = 10_000_000_000
+
 // Blank is fine (the line is dropped, or the rate is 0); anything else must be
-// a readable number in range, or saving would silently drop or reject it.
-function amountProblem(text: string): boolean {
+// what linesToPayload will read through parseDecimal (so no third decimal), and
+// in range, or saving would silently drop, round or reject it. The gross is
+// only ever a means to a net, so the column limit applies to the net alone.
+function amountProblem(text: string, max = Infinity): boolean {
   if (text.trim() === '') return false
-  const n = readNumber(text)
-  return n === null || n < 0
+  const d = parseDecimal(text)
+  return d === null || Number(d) < 0 || Number(d) >= max
 }
 
 function rateProblem(text: string): boolean {
   if (text.trim() === '') return false
-  const n = readNumber(text)
-  return n === null || n < 0 || n > 100
+  const d = parseDecimal(text)
+  return d === null || Number(d) < 0 || Number(d) > 100
 }
 
 /** False while any line holds an unreadable or out-of-range amount or rate. */
 export function linesValid(lines: LineDraft[]): boolean {
   return lines.every(
-    (l) => !amountProblem(l.amount_net) && !amountProblem(l.amount_gross) && !rateProblem(l.vat_rate),
+    (l) => !amountProblem(l.amount_net, MAX_NET) && !amountProblem(l.amount_gross) && !rateProblem(l.vat_rate),
   )
 }
 
 // Seeds editable drafts from a flow's persisted lines. An empty flow starts
 // with one blank line so the editor is never empty. net is authoritative; gross
 // is derived for display and editing (see LineDraft).
-export function linesToDrafts(lines: FlowLineRead[]): LineDraft[] {
+export function linesToDrafts(lines: FlowLineRead[], reverseCharge = false): LineDraft[] {
   if (lines.length === 0) return [emptyLine()]
   return lines.map((l) => ({
     description: l.description ?? '',
     amount_net: amountInput(l.amount_net),
-    amount_gross: netToGross(l.amount_net, l.vat_rate),
+    amount_gross: netToGross(l.amount_net, l.vat_rate, reverseCharge),
     basis: 'net' as const,
     vat_rate: rateInput(l.vat_rate),
     ledger_account_id: l.ledger_account_id === null ? '' : String(l.ledger_account_id),
@@ -127,13 +148,15 @@ interface LinesEditorProps {
   onChange: (lines: LineDraft[]) => void
   // The account's chart of accounts, for booking each line.
   ledgerAccounts: LedgerAccountRead[]
+  // A reverse charge flow pays no VAT: the previewed gross equals the net.
+  reverseCharge?: boolean
 }
 
 const GRID =
   'grid grid-cols-[minmax(8rem,1fr)_7rem_5.5rem_7rem_minmax(9rem,1fr)_auto] items-center gap-2'
 
-export function LinesEditor({ lines, onChange, ledgerAccounts }: LinesEditorProps) {
-  const totals = useMemo(() => linesTotals(lines), [lines])
+export function LinesEditor({ lines, onChange, ledgerAccounts, reverseCharge = false }: LinesEditorProps) {
+  const totals = useMemo(() => linesTotals(lines, reverseCharge), [lines, reverseCharge])
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)))
@@ -141,7 +164,16 @@ export function LinesEditor({ lines, onChange, ledgerAccounts }: LinesEditorProp
 
   const ledgerOptions = [
     { value: UNBOOKED, label: 'Non imputée' },
-    ...ledgerAccounts.map((la) => ({ value: String(la.id), label: `${la.code} — ${la.name}` })),
+    // One wrapper: the Select item is a flex row with a gap, which would pull
+    // the code away from its name.
+    ...ledgerAccounts.map((la) => ({
+      value: String(la.id),
+      label: (
+        <span>
+          <span className="numeric">{la.code}</span> — {la.name}
+        </span>
+      ),
+    })),
   ]
 
   return (
@@ -170,12 +202,12 @@ export function LinesEditor({ lines, onChange, ledgerAccounts }: LinesEditorProp
                 numeric
                 aria-label="Montant net"
                 placeholder="0,00"
-                invalid={amountProblem(line.amount_net)}
+                invalid={amountProblem(line.amount_net, MAX_NET)}
                 value={line.amount_net}
                 onChange={(e) =>
                   updateLine(i, {
                     amount_net: e.target.value,
-                    amount_gross: netToGross(e.target.value, line.vat_rate),
+                    amount_gross: netToGross(e.target.value, line.vat_rate, reverseCharge),
                     basis: 'net',
                   })
                 }
@@ -191,8 +223,14 @@ export function LinesEditor({ lines, onChange, ledgerAccounts }: LinesEditorProp
                   updateLine(
                     i,
                     line.basis === 'gross'
-                      ? { vat_rate: e.target.value, amount_net: grossToNet(line.amount_gross, e.target.value) }
-                      : { vat_rate: e.target.value, amount_gross: netToGross(line.amount_net, e.target.value) },
+                      ? {
+                          vat_rate: e.target.value,
+                          amount_net: grossToNet(line.amount_gross, e.target.value, reverseCharge),
+                        }
+                      : {
+                          vat_rate: e.target.value,
+                          amount_gross: netToGross(line.amount_net, e.target.value, reverseCharge),
+                        },
                   )
                 }
               />
@@ -206,7 +244,7 @@ export function LinesEditor({ lines, onChange, ledgerAccounts }: LinesEditorProp
                 onChange={(e) =>
                   updateLine(i, {
                     amount_gross: e.target.value,
-                    amount_net: grossToNet(e.target.value, line.vat_rate),
+                    amount_net: grossToNet(e.target.value, line.vat_rate, reverseCharge),
                     basis: 'gross',
                   })
                 }

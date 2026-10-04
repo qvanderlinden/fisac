@@ -64,7 +64,10 @@ export function FlowForm({
   const [paymentMethod, setPaymentMethod] = useState<string>(initialFlow?.payment_method ?? NONE)
   const [paymentDate, setPaymentDate] = useState(initialFlow?.payment_date ?? '')
   const [paid, setPaid] = useState(initialFlow?.paid ?? false)
-  const [lines, setLines] = useState<LineDraft[]>(() => linesToDrafts(initialFlow?.lines ?? []))
+  // This dialog keeps reverse charge as is (see handleSubmit); it only changes
+  // how the lines preview their gross.
+  const reverseCharge = initialFlow?.reverse_charge ?? false
+  const [lines, setLines] = useState<LineDraft[]>(() => linesToDrafts(initialFlow?.lines ?? [], reverseCharge))
   const [offsetDays, setOffsetDays] = useState('30')
   const [submitted, setSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -96,7 +99,7 @@ export function FlowForm({
       payment_date: noPayment || isVisa ? null : paymentDate || null,
       paid,
       // PATCH replaces the whole flow: carry reverse charge through untouched.
-      reverse_charge: initialFlow?.reverse_charge ?? false,
+      reverse_charge: reverseCharge,
       lines: linesToPayload(lines),
     }
     setSaving(true)
@@ -222,16 +225,18 @@ export function FlowForm({
 
           {isVisa && (
             <p className="type-body-sm text-fg-muted">
-              {account.visa_payment_day != null && invoiceDate !== '' ? (
+              {account.visa_payment_day == null ? (
+                'Définissez d’abord le jour de paiement Visa du compte.'
+              ) : invoiceDate === '' ? (
+                'Saisissez la date de facture pour calculer le paiement Visa.'
+              ) : (
                 <>
-                  Payée le{' '}
+                  Sera payée le{' '}
                   <span className="numeric">
                     {formatDate(visaPaymentDate(invoiceDate, account.visa_payment_day, account.visa_closing_day), 'full')}
                   </span>
                   , selon le cycle Visa du compte.
                 </>
-              ) : (
-                'Définissez d’abord le jour de paiement Visa du compte.'
               )}
             </p>
           )}
@@ -261,9 +266,9 @@ export function FlowForm({
             </div>
           )}
 
-          <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} />
+          <LinesEditor lines={lines} onChange={setLines} ledgerAccounts={ledgerAccounts} reverseCharge={reverseCharge} />
           {submitted && !linesOk && (
-            <p className="type-body-sm text-negative-fg">
+            <p role="alert" className="type-body-sm text-negative-fg">
               Un montant ou un taux est illisible — corrigez les cases en rouge.
             </p>
           )}
