@@ -24,12 +24,14 @@ const PALETTE =
 const COLOUR_PREFIX =
   'bg|text|border(?:-[xystebrl])?|fill|stroke|ring(?:-offset)?|inset-ring|outline|divide|decoration|shadow|inset-shadow|drop-shadow|accent|caret|placeholder|from|via|to'
 
-// A hex colour is only a colour where one is expected, so "#123" in an issue
-// reference or an SVG `url(#id)` is not flagged. 3-4 digit forms need a
-// colour-like context (a quote, bracket, colon, comma or opening parenthesis
-// right before it); 6 and 8 digit forms are flagged anywhere outside a word.
+// A hex colour is only a colour where one is expected, so "#123" in a comment
+// (blanked before this rule runs) or an SVG `url(#id)` is not flagged. 3-4
+// digit forms need a colour-like context right before them (a quote, bracket,
+// colon, comma, opening parenthesis, whitespace or the `_` that stands for a
+// space in a Tailwind arbitrary value: `border: 1px solid #fff`,
+// `shadow-[0_0_#000]`); 6 and 8 digit forms are flagged anywhere outside a word.
 const HEX_RULE = new RegExp(
-  '(?:(?<=[\'"`\\[(:,]\\s*)(?<!url\\(\\s*)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\\b' +
+  '(?:(?<=[\'"`\\[(:,\\s_])(?<!url\\(\\s*)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\\b' +
     '|(?<![\\w&/#])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6})\\b)',
   'g',
 )
@@ -56,7 +58,12 @@ const LINE_RULES = [
 
 const DS = String.raw`['"]@qvanderlinden\/ui(?:\/[\w-]+)*['"]`
 // Checked on the whole file: import and export lists span several lines.
-const DS_NAMED = new RegExp(String.raw`\b(?:import|export)\s*(?:type\s*)?\{([^}]*)\}\s*from\s*${DS}`, 'g')
+const DS_NAMED = new RegExp(
+  String.raw`\b(?:import|export)\s*(?:type\s*)?(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*${DS}`,
+  'g',
+)
+// `export * from` / `export * as ns from` would leak formatDate to every importer.
+const DS_STAR_EXPORT = new RegExp(String.raw`\bexport\s*\*(?:\s*as\s+\w+)?\s*from\s*${DS}`, 'g')
 const DS_NAMESPACE = new RegExp(String.raw`import\s*\*\s*as\s+(\w+)\s+from\s*${DS}`, 'g')
 
 const FORMAT_DATE_MESSAGE = 'formatDate from @qvanderlinden/ui is English-only; use formatDate from src/format.ts'
@@ -130,6 +137,9 @@ for (const file of walk(srcDir)) {
       const verb = match[0].startsWith('export') ? 'exported' : 'imported'
       violations.push(`${rel}:${lineOf(match.index)}: formatDate ${verb} via @qvanderlinden/ui: ${FORMAT_DATE_MESSAGE}`)
     }
+  }
+  for (const match of text.matchAll(DS_STAR_EXPORT)) {
+    violations.push(`${rel}:${lineOf(match.index)}: export * from @qvanderlinden/ui re-exports the English-only formatDate; export what you need by name`)
   }
   for (const match of text.matchAll(DS_NAMESPACE)) {
     const use = new RegExp(`\\b${match[1]}\\.formatDate\\b`).exec(text)
