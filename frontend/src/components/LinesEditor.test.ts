@@ -6,6 +6,7 @@ import {
   linesTotals,
   linesValid,
   netToGross,
+  rebaseLinesForReverseCharge,
   type LineDraft,
 } from './LinesEditor'
 
@@ -102,5 +103,32 @@ describe('VAT preview (half-up per line, like the backend)', () => {
     expect(linesTotals([{ amount_net: '100', vat_rate: '21' }], true)).toEqual({ net: 100, vat: 21, gross: 100 })
     expect(netToGross('100', '21', true)).toBe('100,00')
     expect(grossToNet('100', '21', true)).toBe('100,00')
+  })
+})
+
+describe('rebaseLinesForReverseCharge', () => {
+  it('re-derives the gross of a net-based line when reverse charge turns on, keeping what was typed', () => {
+    const lines = [line({ description: 'En cours', amount_net: '100', amount_gross: '121,00', vat_rate: '21' })]
+    const [rebased] = rebaseLinesForReverseCharge(lines, true)
+    expect(rebased.amount_gross).toBe('100,00')
+    expect(rebased.amount_net).toBe('100')
+    expect(rebased.description).toBe('En cours')
+  })
+
+  it('goes back to a VAT-inclusive gross when reverse charge turns off', () => {
+    const lines = [line({ amount_net: '100', amount_gross: '100,00', vat_rate: '21' })]
+    expect(rebaseLinesForReverseCharge(lines, false)[0].amount_gross).toBe('121,00')
+  })
+
+  it('keeps a gross-based line fixed and re-derives its net', () => {
+    const lines = [line({ amount_net: '100', amount_gross: '121', vat_rate: '21', basis: 'gross' })]
+    const [rebased] = rebaseLinesForReverseCharge(lines, true)
+    expect(rebased.amount_gross).toBe('121')
+    expect(rebased.amount_net).toBe('121,00')
+  })
+
+  it('leaves blank lines and the array itself alone when nothing changes', () => {
+    const lines = [line({})]
+    expect(rebaseLinesForReverseCharge(lines, true)).toBe(lines)
   })
 })

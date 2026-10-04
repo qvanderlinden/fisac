@@ -11,14 +11,18 @@ import type {
   LedgerAccountRead,
   PaymentMethod,
 } from '../api/types'
-import { PAYMENT_METHOD_LABELS, flowGapsSummary, isFlowIncomplete, visaPaymentDate } from '../accountingDisplay'
+import { flowGapsSummary, isFlowIncomplete, visaPaymentDate } from '../accountingDisplay'
 import { eur, formatDate, signedFlowAmount } from '../format'
 import { CELL, CELL_CONTROL, ROW } from './editableTable'
-import { PAYMENT_METHODS } from './FlowForm'
-import { LinesEditor, linesToDrafts, linesToPayload, linesValid, type LineDraft } from './LinesEditor'
-
-// Radix Select values can't be empty strings; this stands for "none".
-const NONE = 'none'
+import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
+import {
+  LinesEditor,
+  linesToDrafts,
+  linesToPayload,
+  linesValid,
+  rebaseLinesForReverseCharge,
+  type LineDraft,
+} from './LinesEditor'
 
 interface FlowRowProps {
   flow: FlowRead
@@ -78,6 +82,12 @@ export function FlowRow({
     if (expanded) setLines(linesToDrafts(flow.lines, flow.reverse_charge))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.id, expanded])
+
+  // Toggling autoliquidation re-derives the previewed gross for the new
+  // basis; it does not reseed, so an in-progress line edit survives.
+  useEffect(() => {
+    setLines((current) => rebaseLinesForReverseCharge(current, flow.reverse_charge))
+  }, [flow.reverse_charge])
 
   const method = flow.payment_method
   const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -150,7 +160,7 @@ export function FlowRow({
           <IconButton
             size="sm"
             icon={expanded ? ChevronDown : ChevronRight}
-            label={expanded ? 'Masquer les lignes' : 'Afficher les lignes'}
+            label={`Lignes de ${flow.name}`}
             aria-expanded={expanded}
             onClick={onToggleExpanded}
           />
@@ -165,8 +175,8 @@ export function FlowRow({
         <TableCell className={CELL}>
           <Input
             size="sm"
-            aria-label="Nom"
-            className={cn(CELL_CONTROL, 'min-w-48 font-medium')}
+            aria-label={`Nom — ${flow.name}`}
+            className={cn(CELL_CONTROL, 'min-w-40 font-medium')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={commitName}
@@ -176,22 +186,19 @@ export function FlowRow({
         <TableCell className={CELL}>
           <Select
             size="sm"
-            aria-label="Catégorie"
-            className={cn(CELL_CONTROL, 'min-w-36')}
+            aria-label={`Catégorie — ${flow.name}`}
+            className={cn(CELL_CONTROL, 'min-w-32')}
             value={flow.category_id != null ? String(flow.category_id) : NONE}
             onValueChange={(value) => onCommit({ category_id: value === NONE ? null : Number(value) })}
-            options={[
-              { value: NONE, label: 'Aucune' },
-              ...categories.map((c) => ({ value: String(c.id), label: c.name })),
-            ]}
+            options={categoryOptions(categories)}
           />
         </TableCell>
         <TableCell className={CELL}>
           <Input
             size="sm"
             type="date"
-            aria-label="Date de facture"
-            className={CELL_CONTROL}
+            aria-label={`Date de facture — ${flow.name}`}
+            className={cn(CELL_CONTROL, 'numeric')}
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
             onBlur={commitInvoiceDate}
@@ -201,18 +208,11 @@ export function FlowRow({
         <TableCell className={CELL}>
           <Select
             size="sm"
-            aria-label="Moyen de paiement"
-            className={cn(CELL_CONTROL, 'min-w-36')}
+            aria-label={`Moyen de paiement — ${flow.name}`}
+            className={cn(CELL_CONTROL, 'min-w-32')}
             value={method ?? NONE}
             onValueChange={changeMethod}
-            options={[
-              { value: NONE, label: 'Sans paiement' },
-              ...PAYMENT_METHODS.map((m) => ({
-                value: m,
-                label: PAYMENT_METHOD_LABELS[m],
-                disabled: m === 'visa' && account.visa_payment_day == null,
-              })),
-            ]}
+            options={paymentMethodOptions(account)}
           />
         </TableCell>
         <TableCell className={CELL}>
@@ -222,7 +222,14 @@ export function FlowRow({
               <span className="sr-only">Aucune date de paiement</span>
             </span>
           ) : method === 'visa' ? (
-            account.visa_payment_day != null && (
+            account.visa_payment_day == null ? (
+              // A Visa flow on an account whose Visa day was since removed: the
+              // date cannot be derived, so show the placeholder, not a blank cell.
+              <span className="px-2.5 text-fg-subtle">
+                <span aria-hidden="true">—</span>
+                <span className="sr-only">Date indisponible : aucun jour de paiement Visa sur le compte</span>
+              </span>
+            ) : (
               <Tooltip label="Selon le cycle Visa du compte">
                 <span tabIndex={0} className="numeric px-2.5 whitespace-nowrap text-fg-muted">
                   {formatDate(
@@ -236,8 +243,8 @@ export function FlowRow({
             <Input
               size="sm"
               type="date"
-              aria-label="Date de paiement"
-              className={CELL_CONTROL}
+              aria-label={`Date de paiement — ${flow.name}`}
+              className={cn(CELL_CONTROL, 'numeric')}
               value={paymentDate}
               onChange={(e) => setPaymentDate(e.target.value)}
               onBlur={commitPaymentDate}
@@ -279,7 +286,11 @@ export function FlowRow({
       {expanded && (
         <TableRow className="bg-surface-sunken hover:bg-surface-sunken">
           <TableCell colSpan={colSpan} className="px-6 py-4">
-            <div className="flex flex-col gap-3">
+            {/* As wide as the card shows (capped at 64rem) and pinned to its left
+                edge while the card scrolls sideways, so the editor and its save
+                button never sit off-screen. The editor scrolls on its own when
+                the card is narrower than its 40rem minimum. */}
+            <div className="sticky left-6 flex w-[min(64rem,calc(100cqw-3rem))] flex-col gap-3">
               <LinesEditor
                 lines={lines}
                 onChange={setLines}
@@ -291,7 +302,7 @@ export function FlowRow({
                   Un montant ou un taux est illisible — corrigez les cases en rouge.
                 </p>
               )}
-              <div className="flex justify-end">
+              <div className="flex justify-start">
                 <Button
                   variant="secondary"
                   size="sm"

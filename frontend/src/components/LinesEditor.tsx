@@ -125,6 +125,26 @@ export function linesToDrafts(lines: FlowLineRead[], reverseCharge = false): Lin
   }))
 }
 
+// Re-derives the gross-side of each draft after the flow's reverse-charge flag
+// flipped, without reseeding: in-progress edits (descriptions, accounts, typed
+// amounts) are kept. Like a rate change, the side typed last (the basis) stays
+// fixed and the other follows. Returns the same array when nothing changes.
+export function rebaseLinesForReverseCharge(lines: LineDraft[], reverseCharge: boolean): LineDraft[] {
+  let changed = false
+  const next = lines.map((l) => {
+    const patch: Partial<LineDraft> =
+      l.basis === 'gross'
+        ? { amount_net: grossToNet(l.amount_gross, l.vat_rate, reverseCharge) }
+        : { amount_gross: netToGross(l.amount_net, l.vat_rate, reverseCharge) }
+    if ((patch.amount_net ?? l.amount_net) === l.amount_net && (patch.amount_gross ?? l.amount_gross) === l.amount_gross) {
+      return l
+    }
+    changed = true
+    return { ...l, ...patch }
+  })
+  return changed ? next : lines
+}
+
 // The normalization applied on submit: lines with no amount are dropped, a
 // blank rate means 0, typed numbers become API decimal strings. Check
 // linesValid first: an unreadable amount is dropped here like a blank one.

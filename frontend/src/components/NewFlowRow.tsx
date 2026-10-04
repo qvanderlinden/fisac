@@ -3,13 +3,10 @@ import { Check, X } from 'lucide-react'
 import { Badge, Checkbox, IconButton, Input, Select, cn } from '@qvanderlinden/ui'
 import { TableCell, TableRow } from '@qvanderlinden/ui/primitives'
 import type { AccountRead, CategoryRead, FlowCreate, FlowKind, PaymentMethod } from '../api/types'
-import { PAYMENT_METHOD_LABELS, todayDateInputValue } from '../accountingDisplay'
+import { todayDateInputValue } from '../accountingDisplay'
 import { frameError } from '../errors'
 import { CELL, CELL_CONTROL } from './editableTable'
-import { PAYMENT_METHODS } from './FlowForm'
-
-// Radix Select values can't be empty strings; this stands for "none".
-const NONE = 'none'
+import { NONE, categoryOptions, paymentMethodOptions } from './flowOptions'
 
 interface NewFlowRowProps {
   kind: FlowKind
@@ -103,7 +100,7 @@ export function NewFlowRow({
           <Input
             size="sm"
             aria-label="Nom"
-            className={cn(CELL_CONTROL, 'min-w-48 font-medium')}
+            className={cn(CELL_CONTROL, 'min-w-40 font-medium')}
             placeholder={kind === 'revenue' ? 'Nouveau revenu…' : 'Nouvelle dépense…'}
             value={name}
             autoFocus
@@ -114,13 +111,10 @@ export function NewFlowRow({
           <Select
             size="sm"
             aria-label="Catégorie"
-            className={cn(CELL_CONTROL, 'min-w-36')}
+            className={cn(CELL_CONTROL, 'min-w-32')}
             value={categoryId}
             onValueChange={setCategoryId}
-            options={[
-              { value: NONE, label: 'Aucune' },
-              ...categories.map((c) => ({ value: String(c.id), label: c.name })),
-            ]}
+            options={categoryOptions(categories)}
           />
         </TableCell>
         <TableCell className={CELL}>
@@ -128,7 +122,7 @@ export function NewFlowRow({
             size="sm"
             type="date"
             aria-label="Date de facture"
-            className={CELL_CONTROL}
+            className={cn(CELL_CONTROL, 'numeric')}
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
           />
@@ -137,20 +131,13 @@ export function NewFlowRow({
           <Select
             size="sm"
             aria-label="Moyen de paiement"
-            className={cn(CELL_CONTROL, 'min-w-36')}
+            className={cn(CELL_CONTROL, 'min-w-32')}
             value={paymentMethod}
             onValueChange={(value) => {
               setPaymentMethod(value)
               if (value === NONE || value === 'visa') setPaymentDate('')
             }}
-            options={[
-              { value: NONE, label: 'Sans paiement' },
-              ...PAYMENT_METHODS.map((m) => ({
-                value: m,
-                label: PAYMENT_METHOD_LABELS[m],
-                disabled: m === 'visa' && account.visa_payment_day == null,
-              })),
-            ]}
+            options={paymentMethodOptions(account)}
           />
         </TableCell>
         <TableCell className={CELL}>
@@ -166,7 +153,7 @@ export function NewFlowRow({
               size="sm"
               type="date"
               aria-label="Date de paiement"
-              className={CELL_CONTROL}
+              className={cn(CELL_CONTROL, 'numeric')}
               value={paymentDate}
               onChange={(e) => setPaymentDate(e.target.value)}
             />
@@ -184,7 +171,12 @@ export function NewFlowRow({
         )}
         <TableCell className={CELL}>
           <Badge asChild tone={paid ? 'positive' : 'warning'}>
-            <button type="button" className="cursor-pointer" onClick={() => setPaid((p) => !p)}>
+            <button
+              type="button"
+              className="cursor-pointer"
+              onClick={() => setPaid((p) => !p)}
+              aria-label={`Nouveau flux : ${paid ? 'payé' : 'à payer'} — marquer ${paid ? 'à payer' : 'payé'}`}
+            >
               {paid ? 'payé' : 'à payer'}
             </button>
           </Badge>

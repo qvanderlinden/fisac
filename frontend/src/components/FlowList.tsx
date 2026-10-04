@@ -43,15 +43,18 @@ import { CELL, HEAD } from './editableTable'
 import { FlowBulkEditDialog } from './FlowBulkEditDialog'
 import { PAYMENT_METHODS } from './FlowForm'
 import { FlowGenerator } from './FlowGenerator'
+import { mergeFlowChanges } from './flowPayload'
 import { FlowRow } from './FlowRow'
-import { linesToDrafts, linesToPayload } from './LinesEditor'
 import { NewFlowRow } from './NewFlowRow'
 import { PageHeader } from './PageHeader'
+import { createSerialQueue } from './serialQueue'
 
 // marker + chevron + select + name + category + invoice + method + payment
 // date + amount + paid + delete. The reverse-charge column (expenses of
 // VAT-registered accounts only) adds one more - see columnCount below.
 const BASE_COLUMN_COUNT = 11
+
+const RELOAD_LEAD = 'Rechargez la page, puis réessayez.'
 
 type SortKey = 'name' | 'category' | 'invoice_date' | 'payment_method' | 'payment_date' | 'amount' | 'paid'
 type SortDir = 'asc' | 'desc'
@@ -62,25 +65,6 @@ type SortState = { key: SortKey; dir: SortDir } | null
 // and the incomplete toggle. Values are strings for the Selects.
 type FilterState = { category: string; method: string; paid: 'any' | 'paid' | 'unpaid' }
 const NO_FILTERS: FilterState = { category: 'any', method: 'any', paid: 'any' }
-
-// A FlowRead reduced to the full FlowCreate payload the update endpoint wants
-// (full-replace semantics), so a single changed field can be merged on top.
-// Lines round-trip through the LinesEditor draft <-> payload pair every
-// editor uses: a hand-rolled field list once dropped ledger_account_id, which
-// silently unbooked every line on each inline edit.
-function flowToPayload(flow: FlowRead): FlowCreate {
-  return {
-    name: flow.name,
-    kind: flow.kind,
-    category_id: flow.category_id,
-    invoice_date: flow.invoice_date,
-    payment_date: flow.payment_date,
-    payment_method: flow.payment_method,
-    paid: flow.paid,
-    reverse_charge: flow.reverse_charge,
-    lines: linesToPayload(linesToDrafts(flow.lines)),
-  }
-}
 
 interface FlowListProps {
   account: AccountRead
@@ -105,7 +89,9 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
   const [bulkOpen, setBulkOpen] = useState(false)
   // A single unsaved draft row appended at the bottom of the table.
   const [adding, setAdding] = useState(false)
+  // The last mutation that failed, and the last load that failed.
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   // null = natural (server sort_key) order.
   const [sort, setSort] = useState<SortState>(null)
   const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
@@ -113,6 +99,13 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false)
   // Only the latest load may land (switching account quickly).
   const requestSeq = useRef(0)
+  // Every mutation (inline commit, paid toggle, lines save, create, delete,
+  // bulk change) runs through this queue, one at a time, each awaiting its
+  // refresh. An inline commit PATCHes the whole flow, so it is built from the
+  // freshest copy (flowsRef), which an earlier queued commit has just refreshed;
+  // two quick edits (a blur-commit and a click) then cannot overwrite each other.
+  const [enqueue] = useState(createSerialQueue)
+  const flowsRef = useRef<FlowRead[]>([])
   // What is shown right now. refresh() runs from callbacks that outlive the
   // render that made them (after a save, a toggle, a delete), so it reads the
   // account, the kind and the report callback here rather than from its
@@ -133,17 +126,26 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
         listLedgerAccounts(accountId),
       ])
       if (seq !== requestSeq.current) return
+      flowsRef.current = fetchedFlows
       setFlows(fetchedFlows)
       setCategories(fetchedCategories)
       setLedgerAccounts(fetchedLedgerAccounts)
       setLoaded(true)
+      setLoadError(null)
       latest.current.report?.(fetchedFlows.filter(isFlowIncomplete).length)
     } catch (err) {
-      if (seq === requestSeq.current) setError(`Les flux n’ont pas pu être chargés. ${frameError(err)}`)
+      if (seq === requestSeq.current) setLoadError(frameError(err, { client: RELOAD_LEAD }))
     }
   }
 
+  // A failure that comes back after the account changed belongs to the
+  // previous account: it must not show on this one.
+  function reportError(accountId: number, message: string) {
+    if (latest.current.accountId === accountId) setError(message)
+  }
+
   useEffect(() => {
+    flowsRef.current = []
     setFlows([])
     setLoaded(false)
     setSelected(new Set())
@@ -153,7 +155,12 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
     setSort(null)
     setAdding(false)
     setFilters(NO_FILTERS)
+    setGenerating(false)
+    setBulkOpen(false)
+    setDeleting(null)
+    setConfirmingBulkDelete(false)
     setError(null)
+    setLoadError(null)
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id, kind])
@@ -193,8 +200,13 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
         return categoryName(a.category_id).localeCompare(categoryName(b.category_id), 'fr')
       case 'invoice_date':
         return a.invoice_date.localeCompare(b.invoice_date)
-      case 'payment_method':
-        return (a.payment_method ?? '').localeCompare(b.payment_method ?? '')
+      case 'payment_method': {
+        // By the French label the column shows; "sans paiement" (null) sorts last (ascending).
+        if (a.payment_method === b.payment_method) return 0
+        if (a.payment_method === null) return 1
+        if (b.payment_method === null) return -1
+        return PAYMENT_METHOD_LABELS[a.payment_method].localeCompare(PAYMENT_METHOD_LABELS[b.payment_method], 'fr')
+      }
       case 'payment_date': {
         // Explicit null handling: undated flows sort last (ascending).
         if (a.payment_date === b.payment_date) return 0
@@ -203,6 +215,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
         return a.payment_date.localeCompare(b.payment_date)
       }
       case 'amount':
+        // The unsigned size: orders by magnitude on both pages (expenses show as negative, revenues positive).
         return Number(a.amount_gross) - Number(b.amount_gross)
       case 'paid':
         return Number(a.paid) - Number(b.paid)
@@ -270,55 +283,87 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
     })
   }
 
-  async function commitFlow(flow: FlowRead, changes: Partial<FlowCreate>) {
-    setError(null)
-    try {
-      await updateFlow(account.id, flow.id, { ...flowToPayload(flow), ...changes })
-    } catch (err) {
-      setError(`« ${flow.name} » n’a pas été enregistré. ${frameError(err)}`)
-    } finally {
-      // On success this shows the new value; on failure it reverts the row.
-      await refresh()
-    }
+  // Saves one inline change. The payload is built inside the queued task from
+  // the freshest copy of the flow, not from the render-time `flow`.
+  function commitFlow(flow: FlowRead, changes: Partial<FlowCreate>): Promise<void> {
+    const accountId = account.id
+    return enqueue(async () => {
+      setError(null)
+      try {
+        const base =
+          (latest.current.accountId === accountId ? flowsRef.current.find((f) => f.id === flow.id) : undefined) ?? flow
+        await updateFlow(accountId, flow.id, mergeFlowChanges(base, changes))
+      } catch (err) {
+        reportError(accountId, `« ${flow.name} » n’a pas été enregistré. ${frameError(err)}`)
+      } finally {
+        // On success this shows the new value; on failure it reverts the row.
+        await refresh()
+      }
+    })
   }
 
-  async function togglePaid(flow: FlowRead) {
-    setError(null)
-    try {
-      await setFlowPaid(account.id, flow.id, !flow.paid)
-    } catch (err) {
-      setError(`Le statut de « ${flow.name} » n’a pas été modifié. ${frameError(err)}`)
-    } finally {
-      await refresh()
-    }
+  function togglePaid(flow: FlowRead): Promise<void> {
+    const accountId = account.id
+    return enqueue(async () => {
+      setError(null)
+      try {
+        await setFlowPaid(accountId, flow.id, !flow.paid)
+      } catch (err) {
+        reportError(
+          accountId,
+          `Le statut de « ${flow.name} » n’a pas été modifié. ${frameError(err, { client: RELOAD_LEAD })}`,
+        )
+      } finally {
+        await refresh()
+      }
+    })
   }
 
-  async function createDraft(payload: FlowCreate) {
+  // Clears the search and filters first, so the saved flow and its opened
+  // lines editor are not hidden by a filter that excludes it.
+  function startAdding() {
+    setSearch('')
+    setOnlyIncomplete(false)
+    setFilters(NO_FILTERS)
+    setAdding(true)
+  }
+
+  function createDraft(payload: FlowCreate): Promise<void> {
+    const accountId = account.id
     setError(null)
     // NewFlowRow shows failures itself (and keeps the draft) when this rejects.
-    const created = await createFlow(account.id, payload)
-    setAdding(false)
-    toast('Flux ajouté.', { tone: 'positive' })
-    await refresh()
-    // Open the new row so its amount lines can be entered right away.
-    setExpandedId(created.id)
+    return enqueue(async () => {
+      const created = await createFlow(accountId, payload)
+      setAdding(false)
+      toast('Flux ajouté.', { tone: 'positive' })
+      await refresh()
+      // Open the new row so its amount lines can be entered right away.
+      setExpandedId(created.id)
+    })
   }
 
-  async function runBulk(payload: Omit<FlowBulkUpdate, 'flow_ids'>) {
-    const n = visibleSelectedIds.length
-    await bulkUpdateFlows(account.id, { flow_ids: visibleSelectedIds, ...payload })
-    setBulkOpen(false)
-    setSelected(new Set())
-    toast(`${countLabel(n, 'flux modifié', 'flux modifiés')}.`, { tone: 'positive' })
-    await refresh()
+  function runBulk(payload: Omit<FlowBulkUpdate, 'flow_ids'>): Promise<void> {
+    const accountId = account.id
+    const ids = visibleSelectedIds
+    return enqueue(async () => {
+      await bulkUpdateFlows(accountId, { flow_ids: ids, ...payload })
+      setBulkOpen(false)
+      setSelected(new Set())
+      toast(`${countLabel(ids.length, 'flux modifié', 'flux modifiés')}.`, { tone: 'positive' })
+      await refresh()
+    })
   }
 
   async function quickSetPaid(paid: boolean) {
+    const accountId = account.id
     setError(null)
     try {
       await runBulk({ paid })
     } catch (err) {
-      setError(`La sélection n’a pas été modifiée. ${frameError(err)}`)
+      reportError(
+        accountId,
+        `La sélection n’a pas été modifiée. ${frameError(err, { client: RELOAD_LEAD })}`,
+      )
     }
   }
 
@@ -338,7 +383,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
             <Button variant="secondary" iconLeft={Sparkles} onClick={() => setGenerating(true)}>
               Générer
             </Button>
-            <Button iconLeft={Plus} onClick={() => setAdding(true)} disabled={!loaded}>
+            <Button iconLeft={Plus} onClick={startAdding} disabled={!loaded}>
               Ajouter un flux
             </Button>
           </>
@@ -416,7 +461,8 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
       {hasSelection && (
         <div className="flex flex-wrap items-center gap-1 rounded-md border border-line-hairline bg-surface-sunken px-3 py-2">
           <span className="mr-2 type-label text-fg-strong">
-            {countLabel(visibleSelectedIds.length, 'sélectionné', 'sélectionnés')}
+            <span className="numeric">{visibleSelectedIds.length}</span>{' '}
+            {visibleSelectedIds.length > 1 ? 'sélectionnés' : 'sélectionné'}
           </span>
           <Button variant="ghost" size="sm" iconLeft={Check} onClick={() => quickSetPaid(true)}>
             Marquer payé
@@ -436,18 +482,27 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
         </div>
       )}
 
+      {loadError && (
+        <Callout tone="negative" title="Les flux n’ont pas pu être chargés.">
+          {loadError}{' '}
+          <Button variant="link" onClick={refresh}>
+            Réessayer
+          </Button>
+        </Callout>
+      )}
+
       {error && (
         <Callout tone="negative" title="Action impossible">
           {error}
         </Callout>
       )}
 
-      {!loaded && !error && <p className="type-body-sm text-fg-muted">Chargement…</p>}
+      {!loaded && !loadError && <p className="type-body-sm text-fg-muted">Chargement…</p>}
 
       {/* Kept mounted through refreshes (every inline edit refetches) so
           scroll position and focus survive. */}
       {loaded && (
-        <Card padding={false}>
+        <Card padding={false} className="@container">
           <Table>
             <TableHeader>
               <TableRow>
@@ -470,7 +525,12 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
                 {sortableHead('payment_method', 'moyen de paiement')}
                 {sortableHead('payment_date', 'date de paiement')}
                 {sortableHead('amount', 'montant', 'right')}
-                {showReverseCharge && <TableHead className={cn(HEAD, 'text-center')}>autoliquidation</TableHead>}
+                {showReverseCharge && (
+                  <TableHead className={cn(HEAD, 'text-center')}>
+                    <span aria-hidden="true">autoliq.</span>
+                    <span className="sr-only">autoliquidation</span>
+                  </TableHead>
+                )}
                 {sortableHead('paid', 'payé')}
                 <TableHead className={HEAD}>
                   <span className="sr-only">Actions</span>
@@ -533,7 +593,7 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
           onClose={() => setGenerating(false)}
           onInserted={async () => {
             setGenerating(false)
-            await refresh()
+            await enqueue(refresh)
           }}
         />
       )}
@@ -555,10 +615,14 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
           description={`« ${deleting.name} » sera supprimé définitivement.`}
           confirmLabel="Supprimer le flux"
           onClose={() => setDeleting(null)}
-          onConfirm={async () => {
-            await deleteFlow(account.id, deleting.id)
-            toast('Flux supprimé.', { tone: 'positive' })
-            await refresh()
+          onConfirm={() => {
+            const accountId = account.id
+            const flowId = deleting.id
+            return enqueue(async () => {
+              await deleteFlow(accountId, flowId)
+              toast('Flux supprimé.', { tone: 'positive' })
+              await refresh()
+            })
           }}
         />
       )}
@@ -569,12 +633,15 @@ export function FlowList({ account, kind, onIncompleteCountChange }: FlowListPro
           description="Les flux sélectionnés seront supprimés définitivement."
           confirmLabel="Supprimer"
           onClose={() => setConfirmingBulkDelete(false)}
-          onConfirm={async () => {
-            const n = visibleSelectedIds.length
-            await bulkDeleteFlows(account.id, visibleSelectedIds)
-            setSelected(new Set())
-            toast(`${countLabel(n, 'flux supprimé', 'flux supprimés')}.`, { tone: 'positive' })
-            await refresh()
+          onConfirm={() => {
+            const accountId = account.id
+            const ids = visibleSelectedIds
+            return enqueue(async () => {
+              await bulkDeleteFlows(accountId, ids)
+              setSelected(new Set())
+              toast(`${countLabel(ids.length, 'flux supprimé', 'flux supprimés')}.`, { tone: 'positive' })
+              await refresh()
+            })
           }}
         />
       )}
