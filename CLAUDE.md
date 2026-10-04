@@ -139,9 +139,11 @@ network — it does not start one.
 The frontend stage installs `@qvanderlinden/ui` from GitHub Packages, so the
 build needs `NODE_AUTH_TOKEN` in the environment. It is passed as a BuildKit
 secret, mounted for the `npm ci` step only, and never lands in an image layer.
+The secret id is `NODE_AUTH_TOKEN`, the variable's own name, because that is
+the id Coolify uses when it passes build variables as secrets.
 
 ```bash
-docker build --secret id=node_auth_token,env=NODE_AUTH_TOKEN -t fisac .
+docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN -t fisac .
 ```
 
 ## Deployment

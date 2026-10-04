@@ -4,9 +4,11 @@ FROM node:22-slim AS frontend-build
 WORKDIR /src
 # .npmrc maps @qvanderlinden to GitHub Packages and reads NODE_AUTH_TOKEN.
 # The token is a build secret, mounted as an env var for this one step only,
-# so it never lands in a layer (secret env mounts need dockerfile:1.10+).
+# so it never lands in a layer (secret env mounts need dockerfile:1.10+). The
+# secret id is the variable's own name, which is what Coolify's build secrets
+# pass (--secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN).
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
-RUN --mount=type=secret,id=node_auth_token,env=NODE_AUTH_TOKEN npm ci
+RUN --mount=type=secret,id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN npm ci
 COPY frontend/ ./
 RUN npm run build
 
