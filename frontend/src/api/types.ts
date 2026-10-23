@@ -1,306 +1,140 @@
-// Hand-maintained parallel types mirroring fisac/schemas.py field-for-field.
-// Every money field is a `string`, not `number`: Pydantic v2 + FastAPI's
-// response_model serializes Decimal to a JSON string, not a number.
+// The API's read shapes, written by hand from backend/src/fisac/schemas/*.py.
+// Money and rates are decimal strings ("550.00", "21.00"); dates are
+// YYYY-MM-DD strings. Both go through src/format.ts for display.
 
-export type FlowKind = 'revenue' | 'expense'
+export type LegalForm = 'srl' | 'sa' | 'sc' | 'natural_person'
+export type VatRegime = 'quarterly' | 'monthly' | 'franchise' | 'none'
+export type FiscalYearState = 'open' | 'closed' | 'inventory_only'
+export type IsocRubric = 'restaurant' | 'car' | 'other'
+export type DepreciationMethod = 'linear' | 'declining'
+export type DepreciationFirstYear = 'prorata' | 'full'
+export type FinancialAccountKind = 'bank' | 'card' | 'cash'
+export type PaymentMethodType = 'transfer' | 'direct_debit' | 'card' | 'cash'
+export type CategoryKind = 'revenue' | 'expense' | 'tax' | 'fixed_asset' | 'outside'
+export type CategoryRole =
+  | 'sales'
+  | 'net_salary'
+  | 'social_contributions'
+  | 'withholding_tax'
+  | 'corporate_tax'
+  | 'card_statement'
+  | 'fixed_asset'
+export type CategorySettlement = 'vat_return' | 'opening_inventory' | 'director_current_account'
 
-// English enum members; French display labels live in accountingDisplay.ts. A
-// null payment_method means no payment is actually made (the old "compte
-// courant associés") - such a flow carries no payment_date and never reaches
-// cashflow.
-export type PaymentMethod = 'direct_debit' | 'bank_transfer' | 'visa'
+export interface CompanyRead {
+  name: string
+  legal_form: LegalForm
+  bce_number: string | null
+  vat_regime: VatRegime
+  registered_office: string | null
+  iban: string | null
+  fiscal_year_start_month: number
+  manager_name: string | null
+  manager_since: string | null
+  manager_paid: boolean
+}
 
-export interface AccountRead {
+export interface PartnerRead {
   id: number
   name: string
-  current_balance: string
-  is_company: boolean
-  vat_applicable: boolean
-  // Day of the month (1-31) the account's Visa charges are paid; feeds the
-  // flow form's payment_date auto-fill.
-  visa_payment_day: number | null
-  // Day of the month (1-31) the Visa statement closes. An invoice dated after
-  // it lands on the next statement, so it is paid one cycle later; null means
-  // the statement closes on the payment day.
-  visa_closing_day: number | null
-  sort_key: string
+  shares: number
+  contribution: string
 }
 
-export interface AccountCreate {
+export interface FiscalYearRead {
+  id: number
+  start_date: string
+  end_date: string
+  state: FiscalYearState
+  isoc_small_company: boolean
+  isoc_minimum_pay: boolean
+  isoc_shares_owned: boolean
+}
+
+/** `GET /api/fiscal-years/next`: the period a POST would open. */
+export interface NextPeriod {
+  start_date: string
+  end_date: string
+}
+
+export interface EquityLineRead {
+  id: number
+  label: string
+  amount: string
+}
+
+export interface ThirdPartyRead {
+  id: number
   name: string
-  current_balance?: string
-  is_company?: boolean
-  vat_applicable?: boolean
-  visa_payment_day?: number | null
-  visa_closing_day?: number | null
+  iban: string | null
+  uses: number
 }
 
-export interface AccountUpdate {
-  name?: string
-  current_balance?: string
-  is_company?: boolean
-  vat_applicable?: boolean
-  visa_payment_day?: number | null
-  visa_closing_day?: number | null
+export interface VatSchemeRead {
+  id: number
+  label: string
+  rate: string
+  recoverable_rate: string | null
+  for_sales: boolean
+  for_purchases: boolean
+  uses: number
+}
+
+export interface IsocSchemeRead {
+  id: number
+  label: string
+  deductible_rate: string
+  rubric: IsocRubric
+  uses: number
+}
+
+export interface DepreciationModelRead {
+  id: number
+  label: string
+  years: number
+  method: DepreciationMethod
+  first_year: DepreciationFirstYear
+  uses: number
+}
+
+export interface FinancialAccountRead {
+  id: number
+  code: string
+  name: string
+  kind: FinancialAccountKind
+}
+
+export interface PaymentMethodRead {
+  id: number
+  name: string
+  type: PaymentMethodType
+  financial_account_id: number
+  financial_account_name: string
+  statement_closing_day: number | null
+  statement_payment_day: number | null
+  settlement_account_id: number | null
+  uses: number
 }
 
 export interface CategoryRead {
   id: number
-  account_id: number
-  name: string
-  // Both 0-100. tax: share deductible for income/corporate tax (remainder is
-  // the "dépense non admise"); vat: share of VAT that is recoverable.
-  tax_deduction_rate: string
-  vat_deduction_rate: string
-  sort_key: string
-}
-
-export interface CategoryCreate {
-  name: string
-  tax_deduction_rate?: string
-  vat_deduction_rate?: string
-}
-
-export interface CategoryUpdate {
-  name?: string
-  tax_deduction_rate?: string
-  vat_deduction_rate?: string
-}
-
-export interface LedgerAccountRead {
-  id: number
-  account_id: number
-  code: string
-  name: string
-  // Belgian PCMN class, always the code's first digit. Derived server-side;
-  // never sent when creating or updating.
-  pcmn_class: number
-}
-
-export interface LedgerAccountCreate {
-  code: string
-  name: string
-}
-
-export interface LedgerAccountUpdate {
-  code?: string
-  name?: string
-}
-
-export interface FlowLineCreate {
-  description?: string | null
-  // Net base (excl. VAT), unsigned.
-  amount_net: string
-  vat_rate?: string
-  // null means unbooked. Must reference a ledger account of the same account
-  // as the flow; the API rejects anything else with a 400.
-  ledger_account_id?: number | null
-}
-
-export interface FlowLineRead {
-  id: number
-  description: string | null
-  amount_net: string
-  vat_rate: string
-  sort_key: string
-  ledger_account_id: number | null
-}
-
-export interface FlowCreate {
-  name: string
-  kind: FlowKind
-  category_id: number | null
-  invoice_date: string
-  // A null payment_method must carry a null payment_date (no payment made).
-  payment_date: string | null
-  payment_method: PaymentMethod | null
-  paid?: boolean
-  // Reverse charge (autoliquidation), expenses only: no VAT paid to the
-  // supplier (gross = net), notional VAT self-assessed on the VAT return.
-  reverse_charge?: boolean
-  lines: FlowLineCreate[]
-}
-
-export type FlowUpdate = FlowCreate
-
-export interface FlowRead {
-  id: number
-  account_id: number
-  name: string
-  kind: FlowKind
-  category_id: number | null
-  invoice_date: string
-  payment_date: string | null
-  payment_method: PaymentMethod | null
-  paid: boolean
-  // Shared by all flows created in the same /bulk call; null otherwise.
-  batch_id: string | null
-  reverse_charge: boolean
-  sort_key: string
-  lines: FlowLineRead[]
-  // Computed from the lines (nothing is stored on the flow header). For a
-  // reverse-charge flow amount_gross === amount_net (no VAT paid); amount_vat
-  // still carries the notional VAT used by the VAT report.
-  amount_net: string
-  amount_vat: string
-  amount_gross: string
-}
-
-export interface FlowPaidSet {
-  paid: boolean
-}
-
-// Applies each present field to every flow in flow_ids. Omit a field to leave
-// it untouched; set category_id/payment_method to null to explicitly clear it.
-// amount_net (with optional vat_rate) replaces each flow's whole line set with
-// one line.
-export interface FlowBulkUpdate {
-  flow_ids: number[]
-  category_id?: number | null
-  payment_method?: PaymentMethod | null
-  paid?: boolean
-  reverse_charge?: boolean
-  amount_net?: string
-  vat_rate?: string
-}
-
-// --- LLM-assisted generation ---
-// One instance of a recurring rule as proposed by the LLM: a period-aware name
-// ("Cotisations sociales Q1") plus the two dates. Category, amounts, VAT and
-// payment method are template data applied client-side to every occurrence.
-export interface ScheduleOccurrence {
-  name: string
-  invoice_date: string
-  payment_date: string | null
-}
-
-export interface FlowGenerateRequest {
-  description: string
-}
-
-export interface FlowGenerateResponse {
-  occurrences: ScheduleOccurrence[]
-  model: string
-  // OpenRouter provider slug that served the request, when reported - lets bad
-  // formatting be traced to (and excluded via OPENROUTER_PROVIDERS) a provider.
-  provider: string | null
-}
-
-export interface FlowBulkCreate {
-  flows: FlowCreate[]
-}
-
-// The moved row lands strictly between these two neighbors (by their sort
-// keys); null at either end means the start/end of the list.
-export interface MoveRequest {
-  after_id?: number | null
-  before_id?: number | null
-}
-
-export interface ProjectionFlow {
-  id: number
-  name: string
-  kind: FlowKind
-  // Unsigned gross magnitude (Σ lines incl. VAT); kind supplies the sign.
-  amount: string
-  invoice_date: string
-  payment_date: string
-  payment_method: PaymentMethod | null
-  paid: boolean
-}
-
-export interface ProjectionPoint {
-  date: string
-  flows: ProjectionFlow[]
-  balance: string
-}
-
-export interface AccountProjection {
-  as_of: string
-  starting_balance: string
-  points: ProjectionPoint[]
-  // Payment date of the account's next flow past `points`, if any - null
-  // means nothing is scheduled beyond the projection window at all.
-  next_flow_date: string | null
-}
-
-// --- VAT estimation (per quarter) ---
-// One flow's contribution to a quarter's VAT: full output VAT for a revenue,
-// recoverable input VAT (after the category's vat_deduction_rate) for an
-// expense. Unsigned; kind supplies the direction. Money as string.
-export interface VatFlow {
-  id: number
-  name: string
-  kind: FlowKind
-  invoice_date: string
-  // This flow's contribution to the quarter totals. A normal revenue hits
-  // output_vat only; a normal expense deductible_vat only; a reverse-charge
-  // expense (autoliquidation) self-assesses the notional VAT and hits both.
-  output_vat: string
-  deductible_vat: string
-  reverse_charge: boolean
-  // Derivation context: gross_vat = full VAT before deduction; deduction_rate =
-  // rate applied (100 revenue / category rate expense / 0 uncategorized);
-  // vat_rate = the line VAT % if uniform, else null (mixed).
-  gross_vat: string
-  deduction_rate: string
-  vat_rate: string | null
-}
-
-export interface VatQuarter {
-  quarter: number // 1-4
-  label: string // e.g. "Q1 2026"
-  output_vat: string // VAT collected on revenues
-  deductible_vat: string // recoverable VAT on expenses
-  net_due: string // output - deductible (negative = VAT credit)
-  flows: VatFlow[]
-}
-
-export interface AccountVat {
-  year: number
-  vat_applicable: boolean
-  total_net_due: string
-  quarters: VatQuarter[]
-}
-
-// --- Annual accounts ---------------------------------------------------------
-
-export interface LedgerAccountTotals {
-  id: number
-  code: string
-  name: string
-  // Signed: revenue positive, expense negative. A class-6 account therefore
-  // holds a negative total.
-  current: string
-  prior: string
-  delta: string
-}
-
-export interface LedgerClassTotals {
-  pcmn_class: number
   label: string
-  accounts: LedgerAccountTotals[]
-  current_total: string
-  prior_total: string
-  delta: string
+  kind: CategoryKind
+  role: CategoryRole | null
+  settlement: CategorySettlement | null
+  default_vat_scheme_id: number | null
+  default_isoc_scheme_id: number | null
+  archived: boolean
+  uses: number
 }
 
-export interface UnassignedTotals {
-  current: string
-  prior: string
-  delta: string
-  line_count: number
-}
-
-export interface PeriodTotals {
-  current: string
-  prior: string
-  delta: string
-}
-
-export interface AnnualAccounts {
-  year: number
-  classes: LedgerClassTotals[]
-  unassigned: UnassignedTotals
-  result: PeriodTotals
+/** What `api/client.ts` throws for a non-2xx response. `message` is the
+ *  server's detail (for a 422, its first field message); `fields` maps a
+ *  422's field names to their messages. */
+export type ApiError = {
+  status: number
+  code?: 'in_use' | 'system' | 'last_partner'
+  uses?: number
+  message: string
+  fields: Record<string, string>
 }

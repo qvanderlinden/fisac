@@ -1,245 +1,75 @@
-import type {
-  AccountCreate,
-  AccountProjection,
-  AccountRead,
-  AccountVat,
-  AccountUpdate,
-  AnnualAccounts,
-  CategoryCreate,
-  CategoryRead,
-  CategoryUpdate,
-  FlowBulkUpdate,
-  FlowCreate,
-  FlowGenerateRequest,
-  FlowGenerateResponse,
-  FlowKind,
-  FlowRead,
-  FlowUpdate,
-  LedgerAccountCreate,
-  LedgerAccountRead,
-  LedgerAccountUpdate,
-  MoveRequest,
-} from './types'
+import type { ApiError } from './types'
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`${res.status} ${res.statusText}: ${body}`)
+/** A non-2xx response, as an Error (so it keeps a stack) carrying the `ApiError` shape. */
+export class HttpError extends Error implements ApiError {
+  status: number
+  code?: ApiError['code']
+  uses?: number
+  fields: Record<string, string>
+
+  constructor(error: ApiError) {
+    super(error.message)
+    this.name = 'HttpError'
+    this.status = error.status
+    this.code = error.code
+    this.uses = error.uses
+    this.fields = error.fields
   }
-  if (res.status === 204) {
-    return undefined as T
+}
+
+type ValidationItem = { loc?: unknown[]; msg?: unknown }
+
+/**
+ * The `ApiError` for a response body: 404 and 409 carry a `detail` string
+ * (409 adds `code`, and `uses` for in_use), a 422 carries FastAPI's
+ * `detail: [{loc, msg, type}]`, read into `fields[loc.at(-1)] = msg`.
+ */
+export function toApiError(status: number, statusText: string, body: string): ApiError {
+  let parsed: { detail?: unknown; code?: unknown; uses?: unknown } = {}
+  try {
+    const json: unknown = JSON.parse(body)
+    if (json && typeof json === 'object') parsed = json
+  } catch {
+    // Not JSON (a proxy's error page): the status text stands in.
   }
-  return res.json() as Promise<T>
+  const fields: Record<string, string> = {}
+  let message = typeof parsed.detail === 'string' ? parsed.detail : ''
+  if (Array.isArray(parsed.detail)) {
+    for (const item of parsed.detail as ValidationItem[]) {
+      const key = Array.isArray(item?.loc) ? item.loc.at(-1) : undefined
+      if (key === undefined || typeof item.msg !== 'string') continue
+      fields[String(key)] = item.msg
+      if (message === '') message = item.msg
+    }
+  }
+  const code =
+    parsed.code === 'in_use' || parsed.code === 'system' || parsed.code === 'last_partner' ? parsed.code : undefined
+  return {
+    status,
+    ...(code ? { code } : {}),
+    ...(typeof parsed.uses === 'number' ? { uses: parsed.uses } : {}),
+    message: message || statusText || `Erreur ${status}`,
+    fields,
+  }
 }
 
-// --- Accounts ---------------------------------------------------------------
-
-export function listAccounts(): Promise<AccountRead[]> {
-  return request('/accounts')
-}
-
-export function createAccount(payload: AccountCreate): Promise<AccountRead> {
-  return request('/accounts', { method: 'POST', body: JSON.stringify(payload) })
-}
-
-export function updateAccount(accountId: number, payload: AccountUpdate): Promise<AccountRead> {
-  return request(`/accounts/${accountId}`, { method: 'PATCH', body: JSON.stringify(payload) })
-}
-
-export function moveAccount(accountId: number, payload: MoveRequest): Promise<AccountRead> {
-  return request(`/accounts/${accountId}/move`, { method: 'PATCH', body: JSON.stringify(payload) })
-}
-
-export function deleteAccount(accountId: number): Promise<void> {
-  return request(`/accounts/${accountId}`, { method: 'DELETE' })
-}
-
-// --- Categories -------------------------------------------------------------
-
-export function listCategories(accountId: number): Promise<CategoryRead[]> {
-  return request(`/accounts/${accountId}/categories`)
-}
-
-export function createCategory(accountId: number, payload: CategoryCreate): Promise<CategoryRead> {
-  return request(`/accounts/${accountId}/categories`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    method,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (!response.ok) {
+    throw new HttpError(toApiError(response.status, response.statusText, await response.text()))
+  }
+  // A DELETE answers 204 with no body.
+  if (response.status === 204) return undefined as T
+  return (await response.json()) as T
 }
 
-export function updateCategory(
-  accountId: number,
-  categoryId: number,
-  payload: CategoryUpdate,
-): Promise<CategoryRead> {
-  return request(`/accounts/${accountId}/categories/${categoryId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function moveCategory(
-  accountId: number,
-  categoryId: number,
-  payload: MoveRequest,
-): Promise<CategoryRead> {
-  return request(`/accounts/${accountId}/categories/${categoryId}/move`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function deleteCategory(accountId: number, categoryId: number): Promise<void> {
-  return request(`/accounts/${accountId}/categories/${categoryId}`, { method: 'DELETE' })
-}
-
-// --- Ledger accounts --------------------------------------------------------
-
-export function listLedgerAccounts(accountId: number): Promise<LedgerAccountRead[]> {
-  return request(`/accounts/${accountId}/ledger-accounts`)
-}
-
-export function createLedgerAccount(
-  accountId: number,
-  payload: LedgerAccountCreate,
-): Promise<LedgerAccountRead> {
-  return request(`/accounts/${accountId}/ledger-accounts`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function updateLedgerAccount(
-  accountId: number,
-  ledgerAccountId: number,
-  payload: LedgerAccountUpdate,
-): Promise<LedgerAccountRead> {
-  return request(`/accounts/${accountId}/ledger-accounts/${ledgerAccountId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function deleteLedgerAccount(accountId: number, ledgerAccountId: number): Promise<void> {
-  return request(`/accounts/${accountId}/ledger-accounts/${ledgerAccountId}`, {
-    method: 'DELETE',
-  })
-}
-
-// --- Flows ------------------------------------------------------------------
-
-export function listFlows(accountId: number, kind?: FlowKind): Promise<FlowRead[]> {
-  const params = kind ? `?${new URLSearchParams({ kind })}` : ''
-  return request(`/accounts/${accountId}/flows${params}`)
-}
-
-export function getFlow(accountId: number, flowId: number): Promise<FlowRead> {
-  return request(`/accounts/${accountId}/flows/${flowId}`)
-}
-
-export function createFlow(accountId: number, payload: FlowCreate): Promise<FlowRead> {
-  return request(`/accounts/${accountId}/flows`, { method: 'POST', body: JSON.stringify(payload) })
-}
-
-export function updateFlow(
-  accountId: number,
-  flowId: number,
-  payload: FlowUpdate,
-): Promise<FlowRead> {
-  return request(`/accounts/${accountId}/flows/${flowId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function setFlowPaid(accountId: number, flowId: number, paid: boolean): Promise<FlowRead> {
-  return request(`/accounts/${accountId}/flows/${flowId}/paid`, {
-    method: 'PATCH',
-    body: JSON.stringify({ paid }),
-  })
-}
-
-export function moveFlow(
-  accountId: number,
-  flowId: number,
-  payload: MoveRequest,
-): Promise<FlowRead> {
-  return request(`/accounts/${accountId}/flows/${flowId}/move`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function deleteFlow(accountId: number, flowId: number): Promise<void> {
-  return request(`/accounts/${accountId}/flows/${flowId}`, { method: 'DELETE' })
-}
-
-// Deletes every flow created by the same /bulk call (see FlowRead.batch_id).
-export function deleteFlowBatch(accountId: number, batchId: string): Promise<void> {
-  return request(`/accounts/${accountId}/flows/batch/${batchId}`, { method: 'DELETE' })
-}
-
-// Applies the given fields to every flow in payload.flow_ids at once. Only keys
-// present in the payload are changed server-side (see FlowBulkUpdate).
-export function bulkUpdateFlows(
-  accountId: number,
-  payload: FlowBulkUpdate,
-): Promise<FlowRead[]> {
-  return request(`/accounts/${accountId}/flows/bulk`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
-}
-
-// Deletes every flow in flowIds in one transaction (scoped to the account).
-export function bulkDeleteFlows(accountId: number, flowIds: number[]): Promise<void> {
-  return request(`/accounts/${accountId}/flows/bulk`, {
-    method: 'DELETE',
-    body: JSON.stringify({ flow_ids: flowIds }),
-  })
-}
-
-// Sends the natural-language rule to the backend, which has OpenRouter expand
-// it into a proposed schedule. No DB writes until the user approves via
-// createFlowsBulk.
-export function generateFlows(
-  accountId: number,
-  payload: FlowGenerateRequest,
-): Promise<FlowGenerateResponse> {
-  return request(`/accounts/${accountId}/flows/generate`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function createFlowsBulk(accountId: number, flows: FlowCreate[]): Promise<FlowRead[]> {
-  return request(`/accounts/${accountId}/flows/bulk`, {
-    method: 'POST',
-    body: JSON.stringify({ flows }),
-  })
-}
-
-// --- Projection -------------------------------------------------------------
-
-export function fetchProjection(accountId: number, toDate?: string): Promise<AccountProjection> {
-  const params = toDate ? `?${new URLSearchParams({ to_date: toDate })}` : ''
-  return request(`/accounts/${accountId}/projection${params}`)
-}
-
-// --- VAT --------------------------------------------------------------------
-
-export function fetchVat(accountId: number, year?: number): Promise<AccountVat> {
-  const params = year != null ? `?${new URLSearchParams({ year: String(year) })}` : ''
-  return request(`/accounts/${accountId}/vat${params}`)
-}
-
-// --- Annual accounts --------------------------------------------------------
-
-export function fetchAnnualAccounts(accountId: number, year?: number): Promise<AnnualAccounts> {
-  const query = year === undefined ? '' : `?year=${year}`
-  return request(`/accounts/${accountId}/annual-accounts${query}`)
+export const api = {
+  get: <T>(path: string) => request<T>('GET', path),
+  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
+  del: (path: string) => request<void>('DELETE', path),
 }

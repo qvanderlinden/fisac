@@ -2,10 +2,9 @@
  * Runs async tasks one at a time, in the order they were added. A task that
  * rejects rejects only its own promise: the ones queued behind it still run.
  *
- * The flows table commits every edit with a full-replace PATCH built from the
- * freshest copy of the flow, so edits must not overlap: a second commit has to
- * wait for the first one to land (and for the list to refresh) before it
- * reads the flow it merges onto.
+ * One row's autosaved fields each PATCH on their own; queued per row, they
+ * reach the server in the order they were typed, so a slow first PATCH can
+ * never land after a later one and undo it.
  */
 export function createSerialQueue() {
   let tail: Promise<unknown> = Promise.resolve()

@@ -13,7 +13,6 @@ import {
   pluralNoun,
   rateInput,
   signedEur,
-  signedFlowAmount,
   toApiDecimal,
 } from './format'
 
@@ -70,13 +69,6 @@ describe('signedEur', () => {
     expect(signedEur(-42.5)).toBe(`${MINUS}€42,50`)
     expect(signedEur('0')).toBe('€0,00')
     expect(signedEur(0.001)).toBe('€0,00')
-  })
-})
-
-describe('signedFlowAmount', () => {
-  it('keeps revenues positive and turns expenses negative', () => {
-    expect(signedFlowAmount('revenue', '120.00')).toBe(120)
-    expect(signedFlowAmount('expense', '120.00')).toBe(-120)
   })
 })
 

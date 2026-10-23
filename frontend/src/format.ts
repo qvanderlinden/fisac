@@ -4,7 +4,6 @@
 // since the system's formatDate is English-only. Upstream candidate: a
 // `locale` option on the system's formatDate.
 import { formatEur, formatNumber, parseNumber } from '@qvanderlinden/ui'
-import type { FlowKind } from './api/types'
 
 export { formatEur, formatNumber, parseNumber }
 
@@ -76,12 +75,6 @@ export function signedEur(value: string | number): string {
   const n = typeof value === 'number' ? value : Number(value)
   const formatted = formatEur(n)
   return n > 0 && formatted !== formatEur(0) ? `+${formatted}` : formatted
-}
-
-/** Flow amounts are unsigned magnitudes; the kind carries the sign. */
-export function signedFlowAmount(kind: FlowKind, amount: string | number): number {
-  const n = typeof amount === 'number' ? amount : Number(amount)
-  return kind === 'expense' ? -n : n
 }
 
 /** A rate (0-100) for an editable field: `"21.00"` → `21`, `"5.50"` → `5,5`. */
