@@ -4,7 +4,16 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from fisac.errors import ApiError, api_error_handler
-from fisac.routers import company, financial_accounts, fiscal_years, partners, third_parties
+from fisac.routers import (
+    company,
+    depreciation_models,
+    financial_accounts,
+    fiscal_years,
+    isoc_schemes,
+    partners,
+    third_parties,
+    vat_schemes,
+)
 
 app = FastAPI(title="fisac")
 app.add_exception_handler(ApiError, api_error_handler)
@@ -16,6 +25,9 @@ app.include_router(financial_accounts.router, prefix="/api")
 app.include_router(fiscal_years.router, prefix="/api")
 app.include_router(partners.router, prefix="/api")
 app.include_router(third_parties.router, prefix="/api")
+app.include_router(vat_schemes.router, prefix="/api")
+app.include_router(isoc_schemes.router, prefix="/api")
+app.include_router(depreciation_models.router, prefix="/api")
 
 # Only present inside the built container image (see Dockerfile).
 # Guarded so local `uvicorn --reload` (no frontend build present) still starts.
