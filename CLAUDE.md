@@ -9,16 +9,42 @@ sales, purchases, divers and fixed assets, the director's pay, VAT returns,
 corporate tax (ISOC), the result and the opening and closing inventory.
 
 The app was rebuilt from the "fisac - Compta simplifiée" design canvas. The data
-model is done (`backend/src/fisac/models.py`, migration 0005, spec
-`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`) and slice
-A ("socle", spec `docs/superpowers/specs/2026-10-23-tranche-a-socle-design.md`)
-is done: the routers are mounted under `/api` (company, fiscal years, third
-parties, categories, VAT and ISOC schemes, depreciation models, payment
-methods) and the frontend targets this API for the shell and the seven
-configuration screens (société, tiers, catégories, régimes de TVA, régimes
-ISOC, modèles d'amortissement, moyens de paiement). The other nav entries are
-placeholders ("bientôt"). Only typed facts are stored; journals, VAT/ISOC
-figures, the result and the closing inventory are computed.
+model is done (`backend/src/fisac/models.py`, migrations 0005 and 0006, spec
+`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`). Slice A
+("socle", spec `docs/superpowers/specs/2026-10-23-tranche-a-socle-design.md`)
+and slice B ("pièces", spec
+`docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`) are done. The
+routers are mounted under `/api`:
+
+- slice A: company, fiscal years, third parties, categories, VAT and ISOC
+  schemes, depreciation models, payment methods;
+- slice B: `/fiscal-years/{id}/sales|purchases` and `/sales`, `/purchases`
+  with their `/lines`, `/sale-lines/{id}`, `/purchase-lines/{id}`,
+  `/purchase-lines/available`; `/fiscal-years/{id}/fixed-assets` and
+  `/fixed-assets` (`PUT /{id}/depreciations/{year}`, `POST /{id}/recompute`);
+  `/fiscal-years/{id}/journals`; `/fiscal-years/{id}/vat-periods` and
+  `PATCH /vat-periods/{id}`; `/fiscal-years/{id}/result`.
+
+The frontend targets this API for the shell, the seven configuration screens
+(société, tiers, catégories, régimes de TVA, régimes ISOC, modèles
+d'amortissement, moyens de paiement) and the six slice B screens (ventes,
+achats, immobilisations, journaux, tva, résultat). The other nav entries
+(divers, rémunération, isoc, inventaire, inventaire d'ouverture) are
+placeholders ("bientôt") and still to come. Only typed facts are stored;
+journals, VAT/ISOC figures, the result and the closing inventory are computed.
+
+Slice B rules to keep in mind:
+
+- A category is only a label with a direction (sales or purchases); it has no
+  kind, role, settlement or default VAT/ISOC scheme. The Catégories screen has
+  ventes / achats tabs.
+- The result follows three rules: every sale line increases it; a purchase
+  line no fixed asset takes over decreases it by its net plus the VAT that is
+  not recovered; a purchase line a fixed asset takes over decreases it only by
+  that asset's depreciation of the year.
+- A fixed asset is created from the register by first picking an available
+  purchase line; its value and date follow from the line (read only).
+- Journals start at 0 (no opening balance yet).
 
 Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 `pyproject.toml`, pinned via `.python-version`), React + Vite frontend
@@ -40,7 +66,7 @@ fisac/
     src/
     scripts/
       check-design.mjs   # design-system compliance guard (npm run check:design)
-      smoke.mjs          # Playwright end-to-end smoke (npm run smoke)
+      smoke.mjs          # Playwright end-to-end smoke of slices A and B (npm run smoke)
   backend/
     alembic.ini
     migrations/
@@ -107,8 +133,12 @@ must be allowed to create databases, the suite creates and drops its own).
 
 End-to-end smoke: `cd frontend && npm run smoke` drives Chromium (Playwright,
 pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
-empty state, opening the first fiscal year and the seven screens at 1440 and
-390 px, writing screenshots to the gitignored `frontend/smoke/`. It needs the
+empty state, opening the first fiscal year, the seven configuration screens,
+then a sale (1 000 at Ventes 21 %), a purchase (1 500 at Achats 21 % ·
+récupérable) and the fixed asset taking that line over, checked in the journal,
+the VAT period (T4) and the result, with ventes, achats, immobilisations,
+journaux, tva and résultat at 1440 and 390 px, writing screenshots to the
+gitignored `frontend/smoke/`. It needs the
 stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database
 (it opens the first fiscal year, so a second run on the same database fails).
 

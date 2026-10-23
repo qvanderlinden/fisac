@@ -3,10 +3,27 @@
 Simplified books for one Belgian company: sales, purchases, divers and fixed
 assets, the director's pay, VAT returns, corporate tax (ISOC), the result and
 the opening and closing inventory. The data model is in place
-(`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`) and slice
-A is done: the API (mounted under `/api`) and the frontend cover the company,
-fiscal years, tiers, categories, VAT and ISOC schemes, depreciation models and
-payment methods; the other screens are still to come.
+(`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`) and
+slices A and B are done. The API (mounted under `/api`) and the frontend cover
+the company, fiscal years, tiers, categories, VAT and ISOC schemes,
+depreciation models and payment methods (slice A), then sales, purchases, the
+fixed-asset register, the journals, the VAT periods and the result (slice B,
+`docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`). Divers, the
+director's pay, ISOC and the opening inventory are still to come.
+
+Slice B in short:
+- A category is a label with a direction (sales or purchases); it carries no
+  VAT or ISOC default, type or role.
+- The result follows three rules: every sale line increases it; a purchase
+  line no fixed asset takes over decreases it by its net plus the VAT that is
+  not recovered; a purchase line a fixed asset takes over decreases it only by
+  that asset's depreciation of the year.
+- Journals are computed (bank and card, running balance) and start at 0; the
+  VAT periods and the result are computed too.
+- Routes: `/fiscal-years/{id}/sales|purchases|fixed-assets|journals|vat-periods|result`,
+  `/sales`, `/purchases` and their `/lines`, `/sale-lines/{id}`,
+  `/purchase-lines/{id}` and `/purchase-lines/available`, `/fixed-assets`
+  (with `/depreciations/{year}` and `/recompute`), `PATCH /vat-periods/{id}`.
 
 Stack:
 - Backend: [FastAPI](https://fastapi.tiangolo.com), SQLAlchemy 2.x (async) +
@@ -74,7 +91,9 @@ Tests and smoke:
   `postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test`, a role allowed
   to create databases).
 - `cd frontend && npm run smoke` is an end-to-end check in Chromium
-  (Playwright); it needs the stack above running on a fresh database (a second run fails: the
+  (Playwright) of slices A and B: the configuration screens, then a sale, a
+  purchase and the fixed asset taking it over, checked in the journal, the VAT
+  period and the result; it needs the stack above running on a fresh database (a second run fails: the
   first fiscal year is already open) and saves
   screenshots to `frontend/smoke/` (gitignored).
 

@@ -1,4 +1,4 @@
-// End-to-end smoke of slice A. Needs the stack running: uvicorn on :8000 and
+// End-to-end smoke of slices A and B. Needs the stack running: uvicorn on :8000 and
 // `npm run dev` on :5173, against a fresh database. Saves screenshots under
 // smoke/ and exits non-zero on a failed check or a console error.
 import { mkdirSync } from 'node:fs'
@@ -16,16 +16,45 @@ const SCREENS = [
   ['modeles-amortissement', '/modeles-amortissement'],
   ['moyens-paiement', '/moyens-paiement'],
 ]
+const SCREENS_B = [
+  ['ventes', '/ventes'],
+  ['achats', '/achats'],
+  ['immobilisations', '/immobilisations'],
+  ['journaux', '/journaux'],
+  ['tva', '/tva'],
+  ['resultat', '/resultat'],
+]
 const WIDTHS = [
   [1440, 1000],
   [390, 844],
 ]
 
 mkdirSync(OUT, { recursive: true })
+// Amounts render with narrow or non-breaking spaces: compare on a plain-space text.
+const plain = (t) => t.replace(/[\u00a0\u202f]/g, ' ')
 const failures = []
 const check = (ok, what) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`)
   if (!ok) failures.push(what)
+}
+
+/** Fills the open piece's first line: description, category, VAT scheme, unit price. */
+async function fillLine(page, category, scheme, price, description = '') {
+  const choose = async (name, option) => {
+    await page.getByRole('combobox', { name }).first().click()
+    await page.getByRole('option', { name: option, exact: true }).click()
+  }
+  if (description) await page.locator('tbody tr').getByLabel('Description').first().fill(description)
+  await choose('Catégorie', category)
+  await choose('Régime de TVA', scheme)
+  const unit = page.getByLabel('Prix unitaire').first()
+  await unit.fill(price)
+  await unit.blur()
+}
+
+async function closeDialog(page) {
+  await page.getByRole('button', { name: 'Fermer' }).first().click()
+  await page.waitForLoadState('networkidle')
 }
 
 let browser
@@ -93,6 +122,8 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     // Categories: archiving leaves the default list.
     await page.goto(`${BASE}/categories`)
     await settle()
+    // "Frais bancaires" is a purchases category: the screen opens on ventes.
+    await page.getByRole('tab', { name: /^achats/ }).click()
     const pick = page.getByRole('checkbox', { name: 'Sélectionner Frais bancaires' })
     check((await pick.count()) === 1, 'categories: "Frais bancaires" listed by default')
     await pick.check()
@@ -100,6 +131,75 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await settle()
     await page.waitForTimeout(300)
     check((await pick.count()) === 0, 'categories: archived "Frais bancaires" left the default list')
+
+    // A sale: one line of 1000 at Ventes 21 %.
+    await page.goto(`${BASE}/ventes`)
+    await settle()
+    await page.getByRole('button', { name: 'Nouvelle vente' }).click()
+    await page.getByRole('button', { name: 'Ajouter une ligne' }).click()
+    await fillLine(page, 'Prestations de services', 'Ventes 21 %', '1000')
+    await settle()
+    const total = await page
+      .waitForFunction(() => document.body.innerText.replace(/[\u00a0\u202f]/g, ' ').includes('1 210,00'), null, { timeout: 5000 })
+      .then(() => true, () => false)
+    check(total, 'sale: TVAC 1 210,00 (1 000,00 HTVA at 21 %)')
+    await closeDialog(page)
+    check((await page.getByText('S-0001').count()) > 0, 'sale: S-0001 is in the list')
+
+    // A purchase: one line of 1500 at Achats 21 % · récupérable.
+    await page.goto(`${BASE}/achats`)
+    await settle()
+    await page.getByRole('button', { name: 'Nouvel achat' }).click()
+    await page.getByRole('button', { name: 'Ajouter une ligne' }).click()
+    await fillLine(page, 'Petit matériel', 'Achats 21 % · récupérable', '1500', 'Portable de travail')
+    await settle()
+    const shown = await page
+      .waitForFunction(() => document.body.innerText.replace(/[\u00a0\u202f]/g, ' ').includes('1 815,00'), null, { timeout: 5000 })
+      .then(() => true, () => false)
+    check(shown, 'purchase: TVAC 1 815,00')
+    await closeDialog(page)
+    check((await page.getByText('A-0001').count()) > 0, 'purchase: A-0001 is in the list')
+
+    // A fixed asset taking that purchase line over.
+    await page.goto(`${BASE}/immobilisations`)
+    await settle()
+    await page.getByRole('button', { name: 'Nouvelle immobilisation' }).click()
+    await page.getByRole('list', { name: 'Lignes d’achat disponibles' }).getByRole('button').first().click()
+    const model = page.getByRole('combobox', { name: 'Modèle d’amortissement' })
+    await model.click()
+    await page.getByRole('option', { name: 'Informatique · 3 ans' }).click()
+    await page.getByRole('button', { name: 'Ajouter au registre' }).click()
+    await page.getByText('I-001').first().waitFor()
+    check(true, 'fixed asset: I-001 registered with "Informatique · 3 ans"')
+    await closeDialog(page)
+    await settle()
+    check((await page.getByText('I-001').count()) > 0, 'fixed asset: I-001 is in the register')
+
+    // The journal shows the two movements.
+    await page.goto(`${BASE}/journaux`)
+    await settle()
+    const journal = plain(await page.locator('body').innerText())
+    check(journal.includes('S-0001') && journal.includes('A-0001') && journal.includes('1 210,00') && journal.includes('1 815,00'), 'journal: the sale (1 210,00) and the purchase (1 815,00) movements')
+  }
+
+  // The new screens, at both widths.
+  for (const [name, path] of SCREENS_B) {
+    await page.goto(`${BASE}${path}`)
+    await settle()
+    await page.waitForTimeout(300)
+    if (name === 'tva') {
+      // The screen opens on the first period to file; today's pieces sit in the running quarter.
+      const tab = page.getByRole('tab', { name: /^T4/ })
+      if (await tab.count()) await tab.click()
+      else await page.getByRole('combobox', { name: 'Période' }).click().then(() => page.getByRole('option', { name: /^T4/ }).click())
+      await settle()
+    }
+    if (i === 0) {
+      const text = plain(await page.locator('body').innerText())
+      if (name === 'tva') check(text.includes('210,00') && text.includes('315,00'), 'tva: sales VAT 210,00 and recovered 315,00')
+      if (name === 'resultat') check(text.includes('1 000,00'), 'resultat: revenue 1 000,00')
+    }
+    await shot(name)
   }
   await page.close()
 }
