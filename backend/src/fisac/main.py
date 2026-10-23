@@ -11,6 +11,7 @@ from fisac.routers import (
     fiscal_years,
     isoc_schemes,
     partners,
+    payment_methods,
     third_parties,
     vat_schemes,
 )
@@ -24,6 +25,7 @@ app.include_router(company.router, prefix="/api")
 app.include_router(financial_accounts.router, prefix="/api")
 app.include_router(fiscal_years.router, prefix="/api")
 app.include_router(partners.router, prefix="/api")
+app.include_router(payment_methods.router, prefix="/api")
 app.include_router(third_parties.router, prefix="/api")
 app.include_router(vat_schemes.router, prefix="/api")
 app.include_router(isoc_schemes.router, prefix="/api")
