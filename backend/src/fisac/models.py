@@ -374,93 +374,23 @@ class PaymentMethod(Base):
     )
 
 
-class CategoryKind(enum.StrEnum):
-    # increases the result; sales carry it
-    REVENUE = "revenue"
-    # decreases the result; purchases and the director's pay carry it
-    EXPENSE = "expense"
-    # deducted from the estimated tax, not from the result before tax
-    TAX = "tax"
-    # goes to the register: the depreciation decreases the result, not the line
-    FIXED_ASSET = "fixed_asset"
-    # moves cash or the inventory, never the result: VAT, transfers, debts
-    # and receivables carried over
-    OUTSIDE = "outside"
-
-
-class CategoryRole(enum.StrEnum):
-    """The category a screen books into by itself. Its kind is fixed and it
-    is never deleted, only archived."""
-
+class CategoryDirection(enum.StrEnum):
+    # offered on the lines of sales
     SALES = "sales"
-    NET_SALARY = "net_salary"
-    SOCIAL_CONTRIBUTIONS = "social_contributions"
-    WITHHOLDING_TAX = "withholding_tax"
-    CORPORATE_TAX = "corporate_tax"
-    # the card statement paid by the bank: an internal transfer
-    CARD_STATEMENT = "card_statement"
-    FIXED_ASSET = "fixed_asset"
-
-
-class CategorySettlement(enum.StrEnum):
-    """What a movement of an outside category settles besides the cash."""
-
-    # pays or refunds the balance of a VAT return
-    VAT_RETURN = "vat_return"
-    # collects a receivable or pays a debt of the opening inventory
-    OPENING_INVENTORY = "opening_inventory"
-    # money in from, or out to, the director: the compte courant
-    DIRECTOR_CURRENT_ACCOUNT = "director_current_account"
+    # offered on the lines of purchases
+    PURCHASES = "purchases"
 
 
 class Category(Base):
-    """A catégorie: what a line or a movement is, and what it does to the result.
-
-    A category suggests the VAT and ISOC schemes of a new line; the line keeps
-    its own, so changing the defaults never rewrites a piece.
-    """
+    """A catégorie: the label of a sale or purchase line, on one side only."""
 
     __tablename__ = "categories"
-    __table_args__ = (
-        UniqueConstraint("label", name="uq_categories_label"),
-        # A screen finds its category by role, so each role names one category.
-        Index(
-            "uq_categories_role",
-            "role",
-            unique=True,
-            postgresql_where=text("role IS NOT NULL"),
-        ),
-        CheckConstraint(
-            "role IS NULL"
-            " OR (role = 'sales' AND kind = 'revenue')"
-            " OR (role IN ('net_salary', 'social_contributions', 'withholding_tax')"
-            " AND kind = 'expense')"
-            " OR (role = 'corporate_tax' AND kind = 'tax')"
-            " OR (role = 'card_statement' AND kind = 'outside')"
-            " OR (role = 'fixed_asset' AND kind = 'fixed_asset')",
-            name="ck_categories_role_kind",
-        ),
-        CheckConstraint(
-            "settlement IS NULL OR kind = 'outside'",
-            name="ck_categories_settlement_outside",
-        ),
-    )
+    __table_args__ = (UniqueConstraint("label", name="uq_categories_label"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     label: Mapped[str] = mapped_column(String(120), nullable=False)
-    kind: Mapped[CategoryKind] = mapped_column(_enum(CategoryKind, "category_kind"), nullable=False)
-    role: Mapped[CategoryRole | None] = mapped_column(
-        _enum(CategoryRole, "category_role"), nullable=True
-    )
-    settlement: Mapped[CategorySettlement | None] = mapped_column(
-        _enum(CategorySettlement, "category_settlement"), nullable=True
-    )
-    # NULL: hors TVA. SET NULL, since a default is only a suggestion.
-    default_vat_scheme_id: Mapped[int | None] = mapped_column(
-        ForeignKey("vat_schemes.id", ondelete="SET NULL"), nullable=True
-    )
-    default_isoc_scheme_id: Mapped[int | None] = mapped_column(
-        ForeignKey("isoc_schemes.id", ondelete="SET NULL"), nullable=True
+    direction: Mapped[CategoryDirection] = mapped_column(
+        _enum(CategoryDirection, "category_direction"), nullable=False
     )
     # An archived category is offered on no new piece but keeps its pieces.
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
@@ -476,12 +406,17 @@ class Category(Base):
 # a scheme or a payment method in use stays, as the screens promise.
 
 
+class PieceKind(enum.StrEnum):
+    INVOICE = "invoice"
+    # note de crédit: counts negative everywhere
+    CREDIT_NOTE = "credit_note"
+
+
 class Sale(Base):
     __tablename__ = "sales"
     __table_args__ = (
         UniqueConstraint("fiscal_year_id", "number", name="uq_sales_fiscal_year_number"),
         CheckConstraint("number >= 1", name="ck_sales_number_positive"),
-        CheckConstraint("NOT paid OR payment_date IS NOT NULL", name="ck_sales_paid_has_date"),
         # NULL means "the document date"; an override equal to it is stored as NULL.
         CheckConstraint(
             "booking_date IS NULL OR booking_date <> document_date",
@@ -494,6 +429,11 @@ class Sale(Base):
         ForeignKey("fiscal_years.id", ondelete="RESTRICT"), nullable=False
     )
     number: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[PieceKind] = mapped_column(
+        _enum(PieceKind, "piece_kind"),
+        nullable=False,
+        server_default=PieceKind.INVOICE.value,
+    )
     # The client. Nullable while a new sale is being typed.
     third_party_id: Mapped[int | None] = mapped_column(
         ForeignKey("third_parties.id", ondelete="RESTRICT"), nullable=True, index=True
@@ -509,7 +449,7 @@ class Sale(Base):
     )
     # The date it was paid, or is expected to be. Unpaid with a date after the
     # year end, the sale is a receivable of the closing inventory.
-    payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    payment_date: Mapped[date] = mapped_column(Date, nullable=False)
     paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
@@ -535,20 +475,11 @@ class SaleLine(Base):
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
 
 
-class PurchaseKind(enum.StrEnum):
-    INVOICE = "invoice"
-    # note de crédit: counts negative everywhere
-    CREDIT_NOTE = "credit_note"
-
-
 class Purchase(Base):
     __tablename__ = "purchases"
     __table_args__ = (
         UniqueConstraint("fiscal_year_id", "number", name="uq_purchases_fiscal_year_number"),
         CheckConstraint("number >= 1", name="ck_purchases_number_positive"),
-        CheckConstraint(
-            "NOT paid OR payment_date IS NOT NULL", name="ck_purchases_paid_has_date"
-        ),
         CheckConstraint(
             "booking_date IS NULL OR booking_date <> document_date",
             name="ck_purchases_booking_date_override",
@@ -560,10 +491,10 @@ class Purchase(Base):
         ForeignKey("fiscal_years.id", ondelete="RESTRICT"), nullable=False
     )
     number: Mapped[int] = mapped_column(Integer, nullable=False)
-    kind: Mapped[PurchaseKind] = mapped_column(
-        _enum(PurchaseKind, "purchase_kind"),
+    kind: Mapped[PieceKind] = mapped_column(
+        _enum(PieceKind, "piece_kind"),
         nullable=False,
-        server_default=PurchaseKind.INVOICE.value,
+        server_default=PieceKind.INVOICE.value,
     )
     # The supplier. Nullable while a new purchase is being typed.
     third_party_id: Mapped[int | None] = mapped_column(
@@ -578,7 +509,7 @@ class Purchase(Base):
     )
     # Paid by card, the date of the card payment; the bank pays it later with
     # the card's statement.
-    payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    payment_date: Mapped[date] = mapped_column(Date, nullable=False)
     paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
@@ -603,8 +534,9 @@ class PurchaseLine(Base):
     vat_scheme_id: Mapped[int] = mapped_column(
         ForeignKey("vat_schemes.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    isoc_scheme_id: Mapped[int] = mapped_column(
-        ForeignKey("isoc_schemes.id", ondelete="RESTRICT"), nullable=False, index=True
+    # Kept for the ISOC slice; the pieces screens do not show it.
+    isoc_scheme_id: Mapped[int | None] = mapped_column(
+        ForeignKey("isoc_schemes.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     sort_key: Mapped[str] = mapped_column(_SortKey, nullable=False)
 
@@ -725,30 +657,25 @@ class MiscEntry(Base):
 
 
 class FixedAsset(Base):
-    """An immobilisation of the register, numbered across years (A-004)."""
+    """An immobilisation of the register, numbered across years (I-001)."""
 
     __tablename__ = "fixed_assets"
     __table_args__ = (
         UniqueConstraint("number", name="uq_fixed_assets_number"),
         UniqueConstraint("purchase_line_id", name="uq_fixed_assets_purchase_line"),
         CheckConstraint("number >= 1", name="ck_fixed_assets_number_positive"),
-        CheckConstraint(
-            "acquisition_value >= 0", name="ck_fixed_assets_acquisition_value_positive"
-        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     description: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
-    acquisition_date: Mapped[date] = mapped_column(Date, nullable=False)
-    acquisition_value: Mapped[Decimal] = mapped_column(_Money, nullable=False)
     depreciation_model_id: Mapped[int] = mapped_column(
         ForeignKey("depreciation_models.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    # The purchase line it was bought with; NULL when typed by hand. SET NULL:
-    # deleting the purchase leaves the asset in the register.
-    purchase_line_id: Mapped[int | None] = mapped_column(
-        ForeignKey("purchase_lines.id", ondelete="SET NULL"), nullable=True
+    # The purchase line it was bought with: its date and value are the line's.
+    # RESTRICT: a line with an asset is not deleted before the asset.
+    purchase_line_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_lines.id", ondelete="RESTRICT"), nullable=False
     )
 
 

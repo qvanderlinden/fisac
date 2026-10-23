@@ -125,6 +125,7 @@ async def add_sale(session, **kw) -> Sale:
         "fiscal_year_id": fiscal_year.id,
         "number": 1,
         "document_date": date(2026, 3, 1),
+        "payment_date": date(2026, 3, 1),
         "payment_method_id": 1,
     }
     sale = Sale(**{**values, **kw})
@@ -143,6 +144,7 @@ async def add_purchase_line(session, **kw) -> PurchaseLine:
         "fiscal_year_id": fiscal_year.id,
         "number": 1,
         "document_date": date(2026, 3, 1),
+        "payment_date": date(2026, 3, 1),
         "payment_method_id": 1,
         **kw.pop("purchase", {}),
     }

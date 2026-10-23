@@ -28,10 +28,6 @@ CONSTRAINT_MESSAGES: dict[str, tuple[str, str]] = {
     ),
     "ck_payment_methods_closing_day_range": ("statement_closing_day", "Un jour de 1 à 31"),
     "ck_payment_methods_payment_day_range": ("statement_payment_day", "Un jour de 1 à 31"),
-    "ck_categories_settlement_outside": (
-        "settlement",
-        "Seule une catégorie hors résultat règle une dette ou une créance",
-    ),
 }
 
 

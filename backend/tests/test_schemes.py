@@ -1,9 +1,7 @@
-from datetime import date
 
 from conftest import add_purchase_line, add_sale
-from sqlalchemy import select
 
-from fisac.models import Category, FixedAsset
+from fisac.models import FixedAsset
 
 
 async def test_vat_lists_the_seed(client):
@@ -39,17 +37,11 @@ async def test_vat_uses_sum_sales_and_purchases(client, session):
     assert (await client.get("/api/vat-schemes/4")).json()["uses"] == 2
 
 
-async def test_scheme_only_a_default_points_at_is_deletable(client, session):
-    r = await client.delete("/api/vat-schemes/3")  # "Ventes 0 % · cocontractant": no line, no default
+async def test_scheme_without_a_line_is_deletable(client):
+    r = await client.delete("/api/vat-schemes/3")  # "Ventes 0 % · cocontractant": no line
     assert r.status_code == 204
-    r = await client.delete("/api/isoc-schemes/2")  # "69 % · restaurant", default of "Restaurant"
+    r = await client.delete("/api/isoc-schemes/2")  # "69 % · restaurant": no line
     assert r.status_code == 204
-    restaurant = (
-        await session.execute(
-            select(Category).where(Category.label == "Restaurant").execution_options(populate_existing=True)
-        )
-    ).scalar_one()
-    assert restaurant.default_isoc_scheme_id is None
 
 
 async def test_isoc_rate_range(client):
@@ -80,9 +72,8 @@ async def test_model_crud_and_in_use(client, session):
     r = await client.patch(f"/api/depreciation-models/{m['id']}", json={"years": 6})
     assert r.json()["years"] == 6
     assert (await client.patch(f"/api/depreciation-models/{m['id']}", json={"nope": 1})).status_code == 422
-    session.add(
-        FixedAsset(number=1, acquisition_date=date(2026, 3, 1), acquisition_value=100, depreciation_model_id=m["id"])
-    )
+    line = await add_purchase_line(session)
+    session.add(FixedAsset(number=1, depreciation_model_id=m["id"], purchase_line_id=line.id))
     await session.commit()
     r = await client.delete(f"/api/depreciation-models/{m['id']}")
     assert (r.status_code, r.json()["code"], r.json()["uses"]) == (409, "in_use", 1)
