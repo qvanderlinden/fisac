@@ -4,9 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**fisac** — a single personal accounting app: accounts, categorised revenue
-and expense flows with invoice lines, VAT reporting per quarter, and a balance
-projection over time.
+**fisac** — simplified books for one Belgian company ("Compta simplifiée"):
+sales, purchases, divers and fixed assets, the director's pay, VAT returns,
+corporate tax (ISOC), the result and the opening and closing inventory.
+
+The app is being rebuilt from the "fisac - Compta simplifiée" design canvas.
+The data model is done (`backend/src/fisac/models.py`, migration 0005, spec
+`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`); the API
+is not, so no routers are mounted, and the frontend still targets the old
+personal-accounting API until it is rebuilt. Only typed facts are stored;
+journals, VAT/ISOC figures, the result and the closing inventory are computed.
 
 Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 `pyproject.toml`, pinned via `.python-version`), React + Vite frontend

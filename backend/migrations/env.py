@@ -7,13 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from fisac.config import settings
 from fisac.db import Base
-from fisac.models import (  # noqa: F401 - registers the tables with Base.metadata
-    Account,
-    Category,
-    Flow,
-    FlowLine,
-    LedgerAccount,
-)
+import fisac.models  # noqa: F401 - registers the tables with Base.metadata
 
 config = context.config
 

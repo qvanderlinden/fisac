@@ -1,7 +1,10 @@
 # fisac
 
-A personal accounting app: accounts, categorised revenue and expense flows with
-invoice lines, VAT reporting per quarter, and a balance projection over time.
+Simplified books for one Belgian company: sales, purchases, divers and fixed
+assets, the director's pay, VAT returns, corporate tax (ISOC), the result and
+the opening and closing inventory. The data model is in place; the API and the
+frontend are being rebuilt on it (see
+`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`).
 
 Stack:
 - Backend: [FastAPI](https://fastapi.tiangolo.com), SQLAlchemy 2.x (async) +
