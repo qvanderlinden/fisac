@@ -14,8 +14,9 @@ from fisac.schemas.journals import JournalRead
 
 router = APIRouter(tags=["journals"])
 
-# A card purchase paid this far before the year can have its statement paid within it.
-_LOOKBACK = timedelta(days=65)
+# A card purchase paid this far before the year can have its statement paid within it
+# (closing up to a month after the purchase, payment up to two months after that: < 93 days).
+_LOOKBACK = timedelta(days=100)
 
 
 @router.get("/fiscal-years/{year_id}/journals", response_model=list[JournalRead])

@@ -66,3 +66,20 @@ def test_outside_the_year_is_excluded():
     journals = _by_id(build([BANK, VISA], pieces, [CARD], START, END, TODAY))
     assert [(m.date, m.amount) for m in journals[1].movements] == [(date(2026, 2, 5), Decimal("-50.00"))]
     assert [m.kind for m in journals[2].movements] == ["card_statement"]
+
+
+def test_mid_month_year_start_keeps_a_far_statement():
+    # closing day 1, payment day 25: bought 2026-01-05, paid 2026-03-25 (77 days later)
+    card = Card(7, "Carte Visa", 2, 1, 1, 25)
+    pieces = [_piece(date(2026, 1, 5), "purchase", 1, "-20.00", account=2, card=7)]
+    bank = _by_id(build([BANK, VISA], pieces, [card], date(2026, 3, 20), date(2027, 3, 19), TODAY))[1]
+    assert [(m.date, m.amount) for m in bank.movements] == [(date(2026, 3, 25), Decimal("-20.00"))]
+
+
+def test_statement_netting_to_zero_is_skipped():
+    pieces = [
+        _piece(date(2026, 10, 1), "purchase", 1, "-20.00", account=2, card=7),
+        _piece(date(2026, 10, 2), "purchase", 2, "20.00", account=2, card=7),
+    ]
+    bank = _by_id(build([BANK, VISA], pieces, [CARD], START, END, TODAY))[1]
+    assert bank.movements == []

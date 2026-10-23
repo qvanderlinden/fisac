@@ -1,10 +1,11 @@
 from datetime import date
+from decimal import Decimal
 
 from conftest import add_purchase_line, add_sale
 from sqlalchemy import select
 
 from fisac import pieces
-from fisac.models import FinancialAccount, FinancialAccountKind, PaymentMethod, PaymentMethodType
+from fisac.models import Category, CategoryDirection, SaleLine, FinancialAccount, FinancialAccountKind, PaymentMethod, PaymentMethodType
 
 
 async def test_journals(client, session, monkeypatch):
@@ -23,12 +24,22 @@ async def test_journals(client, session, monkeypatch):
     await session.flush()
     card_id, card_account = card.id, visa.id
     await session.commit()
-    await add_sale(session, payment_method_id=transfer_id, paid=True)
+    category = await session.scalar(select(Category.id).where(Category.direction == CategoryDirection.SALES))
+    for sale in (
+        await add_sale(session, payment_method_id=transfer_id, paid=True),
+        await add_sale(session, payment_method_id=transfer_id, kind="credit_note", number=2, payment_date=date(2026, 3, 2)),
+    ):
+        session.add(SaleLine(sale_id=sale.id, unit_price=50, category_id=category, vat_scheme_id=4, sort_key="a0"))
+    await session.commit()
     await add_purchase_line(
         session, unit_price=100,
         purchase={"payment_method_id": card_id, "payment_date": date(2026, 10, 22), "document_date": date(2026, 10, 22)},
     )
-    fy = 1
+    await add_purchase_line(
+        session, unit_price=10,
+        purchase={"payment_method_id": transfer_id, "kind": "credit_note", "number": 2, "payment_date": date(2026, 3, 3)},
+    )
+    fy = (await client.get("/api/fiscal-years")).json()[0]["id"]
     r = await client.get(f"/api/fiscal-years/{fy}/journals")
     assert r.status_code == 200, r.text
     by_account = {j["account"]["id"]: j for j in r.json()}
@@ -36,5 +47,9 @@ async def test_journals(client, session, monkeypatch):
     card_journal = by_account[card_account]
     assert bank["movements"][0]["reference"] == "S-0001"
     assert bank["movements"][-1]["kind"] == "card_statement" and bank["movements"][-1]["planned"]
+    refs = {m["reference"]: m for m in bank["movements"]}
+    assert Decimal(refs["S-0001"]["amount"]) > 0
+    assert Decimal(refs["S-0002"]["amount"]) < 0  # sale credit note: out
+    assert Decimal(refs["A-0002"]["amount"]) > 0  # purchase credit note: in
     assert card_journal["closing"] == "0.00"
     assert (await client.get("/api/fiscal-years/999/journals")).status_code == 404

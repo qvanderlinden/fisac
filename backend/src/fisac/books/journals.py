@@ -85,6 +85,8 @@ def _statements(pieces: list[CashPiece], cards: list[Card], today: date) -> list
         totals[(card.method_id, statement.end, statement.payment)] += piece.amount
     moves = []
     for (method_id, end, payment), total in totals.items():
+        if not total:
+            continue
         card = by_method[method_id]
         reference = f"Décompte {card.name} · {_MONTHS[end.month - 1]}"
         planned = payment > today
