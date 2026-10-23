@@ -2,11 +2,13 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { X } from 'lucide-react'
 import { Callout, IconButton, Logo, SidebarNav, cn, type SidebarItem } from '@qvanderlinden/ui'
+import { messageOf } from '../errors'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { FiscalYearSwitcher } from './FiscalYearSwitcher'
 import { useFiscalYear } from './FiscalYearContext'
 import { INK_ICON_BUTTON, MobileHeader } from './MobileHeader'
-import { CONFIGURATION_PATHS, NAV, navItemOf } from './nav'
+import { mainView } from './mainView'
+import { NAV, navItemOf } from './nav'
 import { OpenFirstYear } from './OpenFirstYear'
 
 // SidebarNav has no disabled item: an entry of a later slice gets this
@@ -55,24 +57,24 @@ function Brand() {
   )
 }
 
-function isConfiguration(pathname: string): boolean {
-  return CONFIGURATION_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-}
-
-/** The main area: the route's screen, or the first-year empty state where a year is needed. */
+/** The main area: the route's screen, or the first-year step where a year is needed (see `mainView`). */
 function Main() {
   const { pathname } = useLocation()
   const { current, loading, error } = useFiscalYear()
-  if (isConfiguration(pathname) || current) return <Outlet />
-  if (loading) return <p className="type-body-sm text-fg-muted">Chargement…</p>
-  if (error) {
-    return (
-      <Callout tone="negative" title="Les exercices n’ont pas pu être chargés.">
-        {error.message}
-      </Callout>
-    )
+  switch (mainView(pathname, { hasYear: current !== undefined, loading, failed: error !== undefined })) {
+    case 'outlet':
+      return <Outlet />
+    case 'loading':
+      return <p className="type-body-sm text-fg-muted">Chargement…</p>
+    case 'error':
+      return (
+        <Callout tone="negative" title="Les exercices n’ont pas pu être chargés.">
+          {messageOf(error)}
+        </Callout>
+      )
+    case 'open-first-year':
+      return <OpenFirstYear />
   }
-  return <OpenFirstYear />
 }
 
 /** Sidebar (desktop) or header and drawer (mobile) around the route's screen. */

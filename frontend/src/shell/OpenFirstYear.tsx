@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { CalendarPlus } from 'lucide-react'
-import { Button, EmptyState, toast } from '@qvanderlinden/ui'
+import { Button, Callout, EmptyState, toast } from '@qvanderlinden/ui'
 import { messageOf } from '../errors'
 import { formatDate } from '../format'
 import { useFiscalYear } from './FiscalYearContext'
 
 /** The main area while no fiscal year exists: one button opens the first one. */
 export function OpenFirstYear() {
-  const { next, openNext } = useFiscalYear()
+  const { next, nextError, openNext } = useFiscalYear()
   const [busy, setBusy] = useState(false)
 
   async function open() {
@@ -19,6 +19,14 @@ export function OpenFirstYear() {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (nextError && !next) {
+    return (
+      <Callout tone="negative" title="L’exercice à ouvrir n’a pas pu être calculé.">
+        {messageOf(nextError)}
+      </Callout>
+    )
   }
 
   return (

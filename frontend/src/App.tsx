@@ -9,6 +9,7 @@ export default function App() {
       <FiscalYearProvider>
         <Routes>
           <Route element={<AppShell />}>
+            {/* The shell shows the first-year step on "/" while no year exists; this redirect renders only once one does. */}
             <Route index element={<Navigate to="/societe" replace />} />
             <Route path="societe" element={<Placeholder title="Structure société" />} />
             <Route path="tiers" element={<Placeholder title="Tiers" />} />

@@ -13,6 +13,8 @@ export interface FiscalYearState {
   openNext(): Promise<void>
   /** The period `openNext` would open. */
   next: NextPeriod | undefined
+  /** Why `next` could not be loaded. */
+  nextError: ApiError | undefined
   loading: boolean
   error: ApiError | undefined
 }
@@ -70,10 +72,11 @@ export function FiscalYearProvider({ children }: { children: ReactNode }) {
       setCurrent,
       openNext,
       next: nextPeriod.data,
+      nextError: nextPeriod.error,
       loading: list.loading,
       error: list.error,
     }),
-    [years, current, setCurrent, openNext, nextPeriod.data, list.loading, list.error],
+    [years, current, setCurrent, openNext, nextPeriod.data, nextPeriod.error, list.loading, list.error],
   )
   return <FiscalYearContext.Provider value={value}>{children}</FiscalYearContext.Provider>
 }
