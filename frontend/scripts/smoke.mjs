@@ -31,6 +31,10 @@ const WIDTHS = [
 
 mkdirSync(OUT, { recursive: true })
 // Amounts render with narrow or non-breaking spaces: compare on a plain-space text.
+// The pieces are dated today, so the year and the VAT quarter come from today (quarterly company, January start).
+const NOW = new Date()
+const YEAR = NOW.getFullYear()
+const QUARTER = new RegExp(`^T${Math.floor(NOW.getMonth() / 3) + 1}`)
 const plain = (t) => t.replace(/[\u00a0\u202f]/g, ' ')
 const failures = []
 const check = (ok, what) => {
@@ -52,6 +56,11 @@ async function fillLine(page, category, scheme, price, description = '') {
   await unit.blur()
 }
 
+async function checkOverflow(page, name) {
+  const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
+}
+
 async function closeDialog(page) {
   await page.getByRole('button', { name: 'Fermer' }).first().click()
   await page.waitForLoadState('networkidle')
@@ -71,7 +80,7 @@ for (const [width, height] of WIDTHS) {
   page.on('console', (m) => m.type() === 'error' && check(false, `console error (${width}): ${m.text()}`))
   await page.goto(`${BASE}/`)
   await page.waitForLoadState('networkidle')
-  await page.getByRole('button', { name: 'Ouvrir l’exercice 2026' }).waitFor()
+  await page.getByRole('button', { name: `Ouvrir l’exercice ${YEAR}` }).waitFor()
   await page.screenshot({ path: `${OUT}empty-${width}.png`, fullPage: true })
   await page.close()
 }
@@ -86,7 +95,7 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
   await page.goto(`${BASE}/`)
   await settle()
   if (i === 0) {
-    await page.getByRole('button', { name: 'Ouvrir l’exercice 2026' }).click()
+    await page.getByRole('button', { name: `Ouvrir l’exercice ${YEAR}` }).click()
   }
   await page.waitForURL('**/societe')
   if (i === 0) check(true, 'first fiscal year opened, "/" lands on /societe')
@@ -96,8 +105,7 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await settle()
     await page.waitForTimeout(300)
     if (i === 1) {
-      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-      check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
+      await checkOverflow(page, name)
     }
     await shot(name)
   }
@@ -193,20 +201,19 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await page.waitForTimeout(300)
     if (name === 'tva') {
       // The screen opens on the first period to file; today's pieces sit in the running quarter.
-      const tab = page.getByRole('tab', { name: /^T4/ })
+      const tab = page.getByRole('tab', { name: QUARTER })
       if (await tab.count()) await tab.click()
-      else await page.getByRole('combobox', { name: 'Période' }).click().then(() => page.getByRole('option', { name: /^T4/ }).click())
+      else await page.getByRole('combobox', { name: 'Période' }).click().then(() => page.getByRole('option', { name: QUARTER }).click())
       await settle()
       // Let a closing select list fade out before the screenshot.
       await page.getByRole('listbox').waitFor({ state: 'detached' }).catch(() => {})
     }
     if (i === 1) {
-      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-      check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
+      await checkOverflow(page, name)
     }
     if (i === 0) {
       const text = plain(await page.locator('body').innerText())
-      if (name === 'tva') check(text.includes('210,00') && text.includes('315,00'), 'tva: sales VAT 210,00 and recovered 315,00')
+      if (name === 'tva') check(/(?<![\d,] ?)210,00/.test(text) && /(?<![\d,] ?)315,00/.test(text), 'tva: sales VAT 210,00 and recovered 315,00')
       if (name === 'resultat') check(text.includes('1 000,00'), 'resultat: revenue 1 000,00')
     }
     await shot(name)
