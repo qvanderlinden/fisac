@@ -9,10 +9,11 @@ import { CategoriesScreen } from './screens/categories/CategoriesScreen'
 import { JournalsScreen } from './screens/journals/JournalsScreen'
 import { PurchasesScreen } from './screens/purchases/PurchasesScreen'
 import { SalesScreen } from './screens/sales/SalesScreen'
+import { ResultScreen } from './screens/result/ResultScreen'
+import { VatScreen } from './screens/vat/VatScreen'
 import { TiersScreen } from './screens/tiers/TiersScreen'
 import { AppShell } from './shell/AppShell'
 import { FiscalYearProvider } from './shell/FiscalYearContext'
-import { UnderConstruction } from './shell/UnderConstruction'
 
 export default function App() {
   return (
@@ -24,11 +25,10 @@ export default function App() {
             <Route index element={<Navigate to="/societe" replace />} />
             <Route path="ventes/*" element={<SalesScreen />} />
             <Route path="achats/*" element={<PurchasesScreen />} />
-            {/* Stubs until the screens of task 13 replace them. */}
             <Route path="immobilisations/*" element={<FixedAssetsScreen />} />
             <Route path="journaux/*" element={<JournalsScreen />} />
-            <Route path="tva/*" element={<UnderConstruction />} />
-            <Route path="resultat/*" element={<UnderConstruction />} />
+            <Route path="tva/*" element={<VatScreen />} />
+            <Route path="resultat/*" element={<ResultScreen />} />
             <Route path="societe" element={<CompanyScreen />} />
             <Route path="tiers" element={<TiersScreen />} />
             <Route path="categories" element={<CategoriesScreen />} />
