@@ -95,6 +95,10 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await page.goto(`${BASE}${path}`)
     await settle()
     await page.waitForTimeout(300)
+    if (i === 1) {
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
+    }
     await shot(name)
   }
 
@@ -193,6 +197,12 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
       if (await tab.count()) await tab.click()
       else await page.getByRole('combobox', { name: 'Période' }).click().then(() => page.getByRole('option', { name: /^T4/ }).click())
       await settle()
+      // Let a closing select list fade out before the screenshot.
+      await page.getByRole('listbox').waitFor({ state: 'detached' }).catch(() => {})
+    }
+    if (i === 1) {
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
     }
     if (i === 0) {
       const text = plain(await page.locator('body').innerText())

@@ -36,7 +36,7 @@ export function VatTiles({ period }: { period: VatPeriodRead }) {
   const purchases = period.pieces.length - sales
   const balance = balanceOf(period)
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 *:min-w-0 lg:grid-cols-4">
       <StatCard label="tva due" value={Number(period.sales_vat)} format="eur" footnote={`${countLabel(sales, 'vente', 'ventes')} · ${eur(period.sales_net)} HTVA`} />
       <StatCard
         label="tva récupérée"
@@ -45,7 +45,12 @@ export function VatTiles({ period }: { period: VatPeriodRead }) {
         footnote={`${countLabel(purchases, 'achat', 'achats')} · ${eur(period.purchases_net)} HTVA`}
       />
       <StatCard label={balance.label.slice(6)} value={Number(balance.amount)} format="eur" footnote={periodMonths(period)} />
-      <StatCard label="échéance" value={formatDate(period.due, 'full')} footnote="dépôt et paiement" />
+      <StatCard
+        label="échéance"
+        className="min-w-0"
+        value={<span className="max-sm:text-lg">{formatDate(period.due, 'full')}</span>}
+        footnote="dépôt et paiement"
+      />
     </div>
   )
 }
