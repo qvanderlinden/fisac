@@ -2,9 +2,11 @@
 
 Simplified books for one Belgian company: sales, purchases, divers and fixed
 assets, the director's pay, VAT returns, corporate tax (ISOC), the result and
-the opening and closing inventory. The data model is in place; the API and the
-frontend are being rebuilt on it (see
-`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`).
+the opening and closing inventory. The data model is in place
+(`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`) and slice
+A is done: the API (mounted under `/api`) and the frontend cover the company,
+fiscal years, tiers, categories, VAT and ISOC schemes, depreciation models and
+payment methods; the other screens are still to come.
 
 Stack:
 - Backend: [FastAPI](https://fastapi.tiangolo.com), SQLAlchemy 2.x (async) +
@@ -64,7 +66,18 @@ things to know:
   yourself. The container image does run them on start.
 
 Typecheck + build the frontend with `cd frontend && npm run build`
-(`tsc -b && vite build`). There is no linter or test suite on the Python side.
+(`tsc -b && vite build`); `npm run test` runs its vitest suites.
+
+Tests and smoke:
+
+- `uv run pytest` runs the API tests against `TEST_DATABASE_URL` (default
+  `postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test`, a role allowed
+  to create databases).
+- `cd frontend && npm run smoke` is an end-to-end check in Chromium
+  (Playwright); it needs the stack above running on a fresh database and saves
+  screenshots to `frontend/smoke/` (gitignored).
+
+There is no linter or type checker on the Python side.
 
 ## Database
 

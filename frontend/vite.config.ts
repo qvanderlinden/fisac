@@ -13,7 +13,7 @@ export default defineConfig({
       manifest: {
         name: 'fisac',
         short_name: 'fisac',
-        description: 'Flux, TVA et projection de solde',
+        description: 'Compta simplifiée d’une société belge',
         lang: 'fr',
         display: 'standalone',
         // The one place a literal colour is unavoidable: the manifest can't

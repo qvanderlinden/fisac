@@ -8,12 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 sales, purchases, divers and fixed assets, the director's pay, VAT returns,
 corporate tax (ISOC), the result and the opening and closing inventory.
 
-The app is being rebuilt from the "fisac - Compta simplifiée" design canvas.
-The data model is done (`backend/src/fisac/models.py`, migration 0005, spec
-`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`); the API
-is not, so no routers are mounted, and the frontend still targets the old
-personal-accounting API until it is rebuilt. Only typed facts are stored;
-journals, VAT/ISOC figures, the result and the closing inventory are computed.
+The app was rebuilt from the "fisac - Compta simplifiée" design canvas. The data
+model is done (`backend/src/fisac/models.py`, migration 0005, spec
+`docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`) and slice
+A ("socle", spec `docs/superpowers/specs/2026-10-23-tranche-a-socle-design.md`)
+is done: the routers are mounted under `/api` (company, fiscal years, third
+parties, categories, VAT and ISOC schemes, depreciation models, payment
+methods) and the frontend targets this API for the shell and the seven
+configuration screens (société, tiers, catégories, régimes de TVA, régimes
+ISOC, modèles d'amortissement, moyens de paiement). The other nav entries are
+placeholders ("bientôt"). Only typed facts are stored; journals, VAT/ISOC
+figures, the result and the closing inventory are computed.
 
 Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 `pyproject.toml`, pinned via `.python-version`), React + Vite frontend
@@ -21,7 +26,8 @@ Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 system (React 19, Tailwind CSS v4), Postgres via SQLAlchemy 2.x async +
 asyncpg + Alembic, uv for Python deps.
 
-There is no linter, type checker, or test suite configured for the Python side.
+There is no linter or type checker configured for the Python side; the API has
+a pytest suite (`uv run pytest`, see below).
 The frontend is typechecked by `tsc -b` as part of `npm run build`;
 `npm run test` runs its vitest suites (`src/**/*.test.ts(x)`, in two time
 zones) and `npm run check:design` its design-system compliance guard.
@@ -93,6 +99,16 @@ the spot.
 Frontend build/typecheck: `cd frontend && npm run build` (`tsc -b && vite build`).
 Frontend checks: `npm run test` (vitest, run twice: default TZ, then
 `TZ=America/New_York`) and `npm run check:design`.
+
+Backend tests: `uv run pytest` runs the API tests against `TEST_DATABASE_URL`
+(default `postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test`; the role
+must be allowed to create databases, the suite creates and drops its own).
+
+End-to-end smoke: `cd frontend && npm run smoke` drives Chromium (Playwright,
+pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
+empty state, opening the first fiscal year and the seven screens at 1440 and
+390 px, writing screenshots to the gitignored `frontend/smoke/`. It needs the
+stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database.
 
 ## Frontend design system
 
