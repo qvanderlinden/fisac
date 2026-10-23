@@ -2,6 +2,8 @@
 
 import re
 
+from pydantic_core import PydanticCustomError
+
 LENGTHS = {"BE": 16, "NL": 18, "LU": 20, "DE": 22, "FR": 27}
 COUNTRIES = {"BE": "Belgique", "NL": "Pays-Bas", "LU": "Luxembourg", "DE": "Allemagne", "FR": "France"}
 MAX_LENGTH = 34
@@ -32,8 +34,8 @@ def problem(value: str) -> str | None:
 
 
 def checked(value: str | None) -> str | None:
-    """Pydantic field validator body: normalised, or ValueError with the message."""
+    """Pydantic field validator body: normalised, or a 422 whose `msg` is exactly the message."""
     value = normalize(value)
     if value is not None and (message := problem(value)):
-        raise ValueError(message)
+        raise PydanticCustomError("iban", message)
     return value

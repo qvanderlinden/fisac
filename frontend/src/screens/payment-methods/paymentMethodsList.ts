@@ -12,10 +12,11 @@ export const TYPE_LABELS: Record<PaymentMethodType, string> = {
   cash: 'Espèces',
 }
 
-export const TYPE_OPTIONS = (Object.keys(TYPE_LABELS) as PaymentMethodType[]).map((value) => ({
-  value,
-  label: TYPE_LABELS[value],
-}))
+// Slice A has no cash account and no accounts screen, so "espèces" cannot be created yet
+// (existing cash methods still display through TYPE_LABELS). Slice B adds it back.
+export const TYPE_OPTIONS = (Object.keys(TYPE_LABELS) as PaymentMethodType[])
+  .filter((value) => value !== 'cash')
+  .map((value) => ({ value, label: TYPE_LABELS[value] }))
 
 /** The kind of financial account each type is paid from; a card brings its own. */
 const ACCOUNT_KIND: Record<PaymentMethodType, FinancialAccountKind> = {

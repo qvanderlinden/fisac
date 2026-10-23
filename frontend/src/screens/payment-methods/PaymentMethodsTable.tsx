@@ -118,7 +118,7 @@ export function PaymentMethodsTable({
                   </TableCell>
                   <TableCell>{TYPE_LABELS[m.type]}</TableCell>
                   <TableCell>{m.financial_account_name}</TableCell>
-                  <TableCell className={incomplete ? 'text-status-warning-text' : m.type === 'card' ? '' : 'text-fg-muted'}>
+                  <TableCell className={incomplete ? 'text-warning-fg' : m.type === 'card' ? '' : 'text-fg-muted'}>
                     {paramsLabel(m)}
                   </TableCell>
                   <TableCell className="numeric text-right text-fg-muted">{usesLabel(m.uses)}</TableCell>

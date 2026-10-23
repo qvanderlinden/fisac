@@ -14,6 +14,7 @@ async def test_iban_is_normalised_and_checked(client):
     assert r.json()["iban"] == "BE68539007547034"
     r = await client.patch("/api/company", json={"iban": "BE00 0000 0000 0000"})
     assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "iban"]
+    assert r.json()["detail"][0]["msg"] == "IBAN invalide : vérifiez les chiffres (Belgique)"
 
 
 async def test_start_month_out_of_range(client):

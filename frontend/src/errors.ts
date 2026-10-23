@@ -26,7 +26,7 @@ export function messageOf(e: unknown): string {
   }
   if (isApiError(e)) {
     if (e.status >= 500) return `Le serveur a rencontré une erreur. ${RETRY}`
-    if (e.code === 'in_use' && e.uses !== undefined) {
+    if (e.code === 'in_use' && e.uses) {
       return `Porté par ${countLabel(e.uses, 'pièce', 'pièces')} : impossible de le supprimer`
     }
     return Object.values(e.fields)[0] ?? e.message

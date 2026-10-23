@@ -224,7 +224,7 @@ export function PaymentMethodsForm({
       </div>
       <div className="flex flex-col border-t border-line-hairline">
         {preview.length === 0 ? (
-          <span className="pt-2 text-sm text-status-warning-text">jours à compléter</span>
+          <span className="pt-2 text-sm text-warning-fg">jours à compléter</span>
         ) : (
           preview.map((s) => (
             <div

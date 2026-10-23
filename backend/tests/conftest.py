@@ -37,6 +37,8 @@ _snapshot: dict[str, list[dict]] = {}
 
 async def _recreate_database() -> None:
     url = make_url(TEST_URL)
+    if not (url.database or "").endswith("_test"):
+        pytest.exit(f"TEST_DATABASE_URL must name a database ending in _test, not {url.database!r}", returncode=2)
     conn = await asyncpg.connect(
         user=url.username,
         password=url.password,

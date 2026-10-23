@@ -41,6 +41,8 @@ export function SavedText({
 } & Pick<React.ComponentProps<typeof Input>, 'placeholder' | 'type' | 'autoComplete' | 'spellCheck'>) {
   const [text, setText] = useState(read(company[field]))
   const typed = useRef(text)
+  // An error shows only once the user has edited the field, not on a fresh blank one.
+  const [edited, setEdited] = useState(false)
 
   const saver = useAutosave(async (value) => {
     if (!ready(value)) return
@@ -51,7 +53,7 @@ export function SavedText({
     }
   })
 
-  const message = error?.(text)
+  const message = edited ? error?.(text) : undefined
   return (
     <Field label={label} error={message}>
       <Input
@@ -60,6 +62,7 @@ export function SavedText({
         value={text}
         onChange={(e) => {
           typed.current = e.target.value
+          setEdited(true)
           setText(e.target.value)
           saver.onChange(e.target.value)
         }}

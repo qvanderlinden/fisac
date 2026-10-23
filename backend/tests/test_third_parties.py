@@ -23,7 +23,7 @@ async def test_list_by_name(client):
 
 async def test_invalid_iban(client):
     r = await client.post("/api/third-parties", json={"name": "X", "iban": "DE89370400440532013001"})
-    assert r.status_code == 422 and r.json()["detail"][0]["msg"].endswith("(Allemagne)")
+    assert r.status_code == 422 and r.json()["detail"][0]["msg"] == "IBAN invalide : vérifiez les chiffres (Allemagne)"
 
 
 async def test_overlong_iban_is_422_not_500(client):

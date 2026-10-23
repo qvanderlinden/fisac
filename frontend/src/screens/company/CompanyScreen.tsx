@@ -189,7 +189,7 @@ export function CompanyScreen() {
           <ManagerCard company={company.data} save={save} mobile />
           {equityCard}
           <PartnersCards rows={rows} onAdd={add} onOpen={openId} />
-          <div className="pb-16" />
+          <div className="pb-24" />
         </div>
         {editing ? (
           <FullScreenForm title={title} onClose={close} remove={removeAction} confirm={deleteConfirm}>
