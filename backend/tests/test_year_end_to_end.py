@@ -38,7 +38,7 @@ async def _piece(client, path, kind, day, method, line, paid_on=None, paid=True)
     })
 
 
-async def test_a_fiscal_year_end_to_end(client):
+async def _year(client):
     fy = (await _post(client, "/api/fiscal-years", {}))["id"]
     sales21 = await _find(client, "/api/vat-schemes", "Ventes 21 %")
     buy21 = await _find(client, "/api/vat-schemes", "Achats 21 % · récupérable")
@@ -64,6 +64,15 @@ async def test_a_fiscal_year_end_to_end(client):
     depreciation = Decimal(row["amount"])
     assert depreciation > 0
 
+    return {
+        "fy": fy, "asset": asset, "sales": (services, sales21), "card": card,
+        "depreciation": depreciation,
+    }
+
+
+async def test_a_fiscal_year_end_to_end(client):
+    year = await _year(client)
+    fy, depreciation = year["fy"], year["depreciation"]
     result = (await client.get(f"/api/fiscal-years/{fy}/result")).json()
     assert result["revenue"]["total"] == "900.00"
     assert result["charges"]["total"] == "162.00"
@@ -72,6 +81,7 @@ async def test_a_fiscal_year_end_to_end(client):
     assert Decimal(result["result"]) == Decimal("738.00") - depreciation
     assert [p["reference"] for p in result["revenue"]["by_category"][0]["pieces"]] == ["S-0001", "S-0002"]
     # the taken-over line is not a charge
+    assert [p["amount"] for p in result["revenue"]["by_category"][0]["pieces"]] == ["1000.00", "-100.00"]
     assert [c["label"] for c in result["charges"]["by_category"]] == ["Petit matériel", "Restaurant"]
     assert result["charges"]["by_category"][0]["total"] == "50.00"
 
@@ -89,5 +99,32 @@ async def test_a_fiscal_year_end_to_end(client):
     assert visa["closing"] == "0.00"
 
 
+async def test_edited_depreciation_row_is_what_counts(client):
+    year = await _year(client)
+    r = await client.put(f"/api/fixed-assets/{year['asset']['id']}/depreciations/2026", json={"amount": "400.00"})
+    assert r.status_code == 200, r.text
+    result = (await client.get(f"/api/fiscal-years/{year['fy']}/result")).json()
+    assert result["depreciation"]["total"] == "400.00"
+    assert result["depreciation"]["by_asset"][0]["amount"] == "400.00"
+    assert result["result"] == "338.00"
+
+
+async def test_pieces_count_in_the_year_of_their_booking_date(client):
+    year = await _year(client)
+    fy26 = year["fy"]
+    fy27 = (await _post(client, "/api/fiscal-years", {}))["id"]
+    services, sales21 = year["sales"]
+    await _piece(client, "/api/sales", "invoice", "2027-02-01", TRANSFER, (services, sales21, "500"), "2027-02-10")
+    # a sale documented in 2026 but booked in 2027 leaves the 2026 result
+    late = await _piece(client, "/api/sales", "invoice", "2026-12-20", TRANSFER, (services, sales21, "300"), "2026-12-30")
+    await client.patch(f"/api/sales/{late['id']}", json={"booking_date": "2027-01-05"})
+    r26 = (await client.get(f"/api/fiscal-years/{fy26}/result")).json()
+    assert r26["revenue"]["total"] == "900.00"
+    r27 = (await client.get(f"/api/fiscal-years/{fy27}/result")).json()
+    assert r27["revenue"]["total"] == "800.00"
+    assert r27["result"] == str(Decimal("800.00") - Decimal(r27["depreciation"]["total"]))
+
+
 async def test_result_unknown_year(client):
     assert (await client.get("/api/fiscal-years/999/result")).status_code == 404
+    assert "detail" in (await client.get("/api/fiscal-years/999/result")).json()
