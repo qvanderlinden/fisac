@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@qvanderlinden/ui/primitives'
+import { DeleteActions, DeleteRows, type DeleteConfirmProps } from './DeleteConfirm'
 
 const FOCUSABLE =
   'input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -68,18 +69,34 @@ export interface RemoveAction {
 /**
  * Desktop edit dialog of a configuration list (`Tiers` artboard): the screen's form,
  * then a row with the optional delete button and "Fermer". Every field saves itself.
+ *
+ * With `confirm` the same dialog shows the deletion to confirm instead: its title and
+ * description in the header, the rows, "Annuler" and the danger action; closing it
+ * cancels. A bulk delete from the list mounts it with `confirm` alone.
  */
 export function EditDialog({
   title,
   onClose,
   remove,
+  confirm,
   children,
 }: {
-  title: ReactNode
+  title?: ReactNode
   onClose(): void
   remove?: RemoveAction
-  children: ReactNode
+  confirm?: DeleteConfirmProps
+  children?: ReactNode
 }) {
+  if (confirm) {
+    return (
+      <ListDialog title={confirm.title} description={confirm.description} onClose={confirm.onCancel}>
+        <div className="flex flex-col gap-5">
+          <DeleteRows rows={confirm.rows} />
+          <DeleteActions action={confirm.action} onConfirm={confirm.onConfirm} onCancel={confirm.onCancel} />
+        </div>
+      </ListDialog>
+    )
+  }
   return (
     <ListDialog title={title} description="Enregistré automatiquement" onClose={onClose}>
       <div className="flex flex-col gap-4">

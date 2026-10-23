@@ -2,22 +2,26 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Trash2, X } from 'lucide-react'
 import { Button, IconButton } from '@qvanderlinden/ui'
 import { INK_ICON_BUTTON } from '../shell/MobileHeader'
+import { DeleteConfirm, type DeleteConfirmProps } from './DeleteConfirm'
 import type { RemoveAction } from './EditDialog'
 
 /**
  * Mobile edit form of a configuration list (`MobileTiers` artboard): an ink bar with the
  * close button, "enregistré automatiquement" and the title; the screen's form; the
  * optional delete button; a "Fermer" footer. Covers the whole viewport while mounted.
+ * With `confirm` the delete button gives way to the deletion to confirm, under the fields.
  */
 export function FullScreenForm({
   title,
   onClose,
   remove,
+  confirm,
   children,
 }: {
   title: string
   onClose(): void
   remove?: RemoveAction
+  confirm?: DeleteConfirmProps
   children: ReactNode
 }) {
   const root = useRef<HTMLDivElement>(null)
@@ -58,7 +62,9 @@ export function FullScreenForm({
       </header>
       <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto px-4 pt-4 pb-6">
         {children}
-        {remove ? (
+        {confirm ? (
+          <DeleteConfirm {...confirm} />
+        ) : remove ? (
           <Button variant="ghost" iconLeft={Trash2} onClick={remove.run}>
             {remove.label}
           </Button>
