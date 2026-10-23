@@ -8,10 +8,12 @@ import {
   isBadAmount,
   MAX_AMOUNT,
   parseDecimal,
+  parseQuantity,
   parseRate,
   parseRequiredRate,
   parseVatRate,
   pluralNoun,
+  quantityInput,
   rateInput,
   signedEur,
   toApiDecimal,
@@ -248,5 +250,21 @@ describe('isBadAmount', () => {
     expect(isBadAmount('-10 000 000 000', { signed: true, max: MAX_AMOUNT })).toBe(true)
     expect(isBadAmount('-9 999 999 999,99', { signed: true, max: MAX_AMOUNT })).toBe(false)
     expect(isBadAmount('10 000 000 000')).toBe(false)
+  })
+})
+
+describe('quantityInput and parseQuantity', () => {
+  it('shows a quantity without trailing zeros', () => {
+    expect(quantityInput('14.500')).toBe('14,5')
+    expect(quantityInput('1.000')).toBe('1')
+    expect(quantityInput('1000')).toBe(`1${NNBSP}000`)
+  })
+
+  it('reads up to three decimals, refuses a negative or unreadable one', () => {
+    expect(parseQuantity('14,5')).toBe('14.5')
+    expect(parseQuantity('0,125')).toBe('0.125')
+    expect(parseQuantity('0,1255')).toBeNull()
+    expect(parseQuantity('-1')).toBeNull()
+    expect(parseQuantity('abc')).toBeNull()
   })
 })

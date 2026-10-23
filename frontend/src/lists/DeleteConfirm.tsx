@@ -24,7 +24,7 @@ export function DeleteRows({ rows }: { rows: DeleteRow[] }) {
       {rows.map((r, i) => (
         <li key={i} className="flex items-baseline gap-3 border-b border-line-hairline px-3 py-2.5 last:border-b-0">
           <span className="min-w-0 flex-auto text-sm text-fg-strong">{r.label}</span>
-          {r.detail ? <span className="font-mono text-xs text-fg-muted">{r.detail}</span> : null}
+          {r.detail ? <span className="font-mono text-xs whitespace-nowrap text-fg-muted">{r.detail}</span> : null}
         </li>
       ))}
     </ul>

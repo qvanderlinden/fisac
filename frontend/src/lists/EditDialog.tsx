@@ -20,11 +20,14 @@ const FOCUSABLE =
 export function ListDialog({
   title,
   description,
+  size = 'md',
   onClose,
   children,
 }: {
   title: ReactNode
   description?: ReactNode
+  /** `lg` for a wider form; `xl` for a form with a table (a piece and its lines). */
+  size?: 'md' | 'lg' | 'xl'
   onClose(): void
   children: ReactNode
 }) {
@@ -33,6 +36,7 @@ export function ListDialog({
     <DialogRoot open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
+        className={size === 'xl' ? 'sm:max-w-240' : size === 'lg' ? 'sm:max-w-dialog-lg' : undefined}
         {...(description ? {} : { 'aria-describedby': undefined })}
         // Focus the first field of the body, not the close button.
         onOpenAutoFocus={(event) => {
@@ -76,12 +80,16 @@ export interface RemoveAction {
  */
 export function EditDialog({
   title,
+  description = 'Enregistré automatiquement',
+  size,
   onClose,
   remove,
   confirm,
   children,
 }: {
   title?: ReactNode
+  description?: ReactNode
+  size?: 'md' | 'lg' | 'xl'
   onClose(): void
   remove?: RemoveAction
   confirm?: DeleteConfirmProps
@@ -98,7 +106,7 @@ export function EditDialog({
     )
   }
   return (
-    <ListDialog title={title} description="Enregistré automatiquement" onClose={onClose}>
+    <ListDialog title={title} description={description} size={size} onClose={onClose}>
       <div className="flex flex-col gap-4">
         {children}
         <div className="flex flex-wrap justify-between gap-2 border-t border-line-hairline pt-1">

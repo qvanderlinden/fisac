@@ -162,3 +162,17 @@ export function parseRequiredRate(text: string): string | null {
 export function parseVatRate(text: string): string | null {
   return parseRate(text, '0')
 }
+
+/** A quantity (up to 3 decimals) for an editable field: `"14.500"` → `14,5`, `"1.000"` → `1`. */
+export function quantityInput(value: string | number): string {
+  const n = typeof value === 'number' ? value : Number(value)
+  return formatNumber(n, { decimals: 3 }).replace(/,?0+$/, '')
+}
+
+/** A typed quantity as an API decimal string: null when unreadable, negative or past 3 decimals. */
+export function parseQuantity(text: string): string | null {
+  const n = parseNumber(text)
+  if (!Number.isFinite(n) || n < 0) return null
+  if ((TRAILING_DECIMALS.exec(text)?.[1].length ?? 0) > 3) return null
+  return String(Math.round(n * 1000) / 1000)
+}
