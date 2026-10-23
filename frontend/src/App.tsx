@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { DepreciationModelsScreen } from './screens/depreciation-models/DepreciationModelsScreen'
+import { PaymentMethodsScreen } from './screens/payment-methods/PaymentMethodsScreen'
 import { IsocSchemesScreen } from './screens/isoc-schemes/IsocSchemesScreen'
 import { VatSchemesScreen } from './screens/vat-schemes/VatSchemesScreen'
 import { Placeholder } from './screens/Placeholder'
@@ -22,7 +23,7 @@ export default function App() {
             <Route path="regimes-tva" element={<VatSchemesScreen />} />
             <Route path="regimes-isoc" element={<IsocSchemesScreen />} />
             <Route path="modeles-amortissement" element={<DepreciationModelsScreen />} />
-            <Route path="moyens-paiement" element={<Placeholder title="Moyens de paiement" />} />
+            <Route path="moyens-paiement" element={<PaymentMethodsScreen />} />
             <Route path="*" element={<Navigate to="/societe" replace />} />
           </Route>
         </Routes>
