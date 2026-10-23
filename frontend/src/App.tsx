@@ -6,6 +6,7 @@ import { VatSchemesScreen } from './screens/vat-schemes/VatSchemesScreen'
 import { CompanyScreen } from './screens/company/CompanyScreen'
 import { FixedAssetsScreen } from './screens/fixed-assets/FixedAssetsScreen'
 import { CategoriesScreen } from './screens/categories/CategoriesScreen'
+import { JournalsScreen } from './screens/journals/JournalsScreen'
 import { PurchasesScreen } from './screens/purchases/PurchasesScreen'
 import { SalesScreen } from './screens/sales/SalesScreen'
 import { TiersScreen } from './screens/tiers/TiersScreen'
@@ -23,9 +24,9 @@ export default function App() {
             <Route index element={<Navigate to="/societe" replace />} />
             <Route path="ventes/*" element={<SalesScreen />} />
             <Route path="achats/*" element={<PurchasesScreen />} />
-            {/* Stubs until the screens of tasks 12 and 13 replace them. */}
+            {/* Stubs until the screens of task 13 replace them. */}
             <Route path="immobilisations/*" element={<FixedAssetsScreen />} />
-            <Route path="journaux/*" element={<UnderConstruction />} />
+            <Route path="journaux/*" element={<JournalsScreen />} />
             <Route path="tva/*" element={<UnderConstruction />} />
             <Route path="resultat/*" element={<UnderConstruction />} />
             <Route path="societe" element={<CompanyScreen />} />
