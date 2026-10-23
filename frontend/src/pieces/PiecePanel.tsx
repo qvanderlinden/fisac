@@ -15,7 +15,9 @@ import type { PieceSide } from './usePieceRefs'
  * A sale or a purchase open in its form: the desktop dialog or the mobile full-screen
  * form, its delete with confirmation, and the close that deletes a piece just created
  * (`isNew`) and left with no line and no tiers. Usable without its list (R2): open it by
- * id, it loads the piece.
+ * id, it loads the piece. A host that shows figures computed from the piece reloads them
+ * in `onSettled`, which waits for the last save (or the delete) to be answered; `onClose`
+ * fires at once, to hide the form.
  */
 export function PiecePanel<T extends AnyPiece>({
   side,
@@ -27,6 +29,7 @@ export function PiecePanel<T extends AnyPiece>({
   onClose,
   onChange,
   onDeleted,
+  onSettled,
   children,
 }: {
   side: PieceSide
@@ -38,9 +41,10 @@ export function PiecePanel<T extends AnyPiece>({
   onClose(): void
   onChange?(piece: T): void
   onDeleted?(id: number): void
+  onSettled?(): void
   children(editor: PieceEditor<T>, piece: T): ReactNode
 }) {
-  const editor = usePiece<T>(side, id, { initial, isNew, onChange, onDeleted, onClose })
+  const editor = usePiece<T>(side, id, { initial, isNew, onChange, onDeleted, onClose, onSettled })
   const [confirming, setConfirming] = useState(false)
   const piece = editor.piece
 
@@ -63,7 +67,8 @@ export function PiecePanel<T extends AnyPiece>({
         description: copy.removeNote,
         rows: mobile ? [] : [{ label: copy.describe(piece), detail: eur(signed(piece, piece.total)) }],
         action: mobile ? 'Supprimer' : copy.remove,
-        // The form goes at once; the list drops the row once the server has deleted it.
+        // The form goes at once; the list drops the row once the server has deleted it,
+        // and `onSettled` follows the DELETE.
         onConfirm: () => {
           editor.remove()
           onClose()

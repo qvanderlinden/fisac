@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fisac import pieces
@@ -22,22 +23,28 @@ async def _returns(
 ) -> dict[tuple, VatReturn]:
     """The stored row of each period, created when missing.
 
+    The missing rows are inserted with ON CONFLICT DO NOTHING and then read back,
+    so two first reads at once both answer (period_start is unique).
+
     A row left by another regime is not touched unless it starts like a current
-    period (period_start is unique): it then takes that period's end and loses
-    its filing date, which was for a different period.
+    period: it then takes that period's end and loses its filing date, which was
+    for a different period.
     """
     starts = [s for s, _ in spans]
-    existing = {
-        r.period_start: r
-        for r in await session.scalars(select(VatReturn).where(VatReturn.period_start.in_(starts)))
-    }
+    query = select(VatReturn).where(VatReturn.period_start.in_(starts))
+    existing = {r.period_start: r for r in await session.scalars(query)}
+    missing = [(s, e) for s, e in spans if s not in existing]
+    if missing:
+        await session.execute(
+            pg_insert(VatReturn)
+            .values([{"fiscal_year_id": year.id, "period_start": s, "period_end": e} for s, e in missing])
+            .on_conflict_do_nothing(index_elements=["period_start"])
+        )
+        existing = {r.period_start: r for r in await session.scalars(query)}
     rows = {}
     for start, end in spans:
-        row = existing.get(start)
-        if row is None:
-            row = VatReturn(fiscal_year_id=year.id, period_start=start, period_end=end)
-            session.add(row)
-        elif row.period_end != end:
+        row = existing[start]
+        if row.period_end != end:
             row.period_end, row.filed_on = end, None
         rows[(start, end)] = row
     await commit(session)

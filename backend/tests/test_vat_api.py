@@ -1,9 +1,11 @@
+import asyncio
 from datetime import date
 
 from conftest import add_purchase_line, add_sale
 
 from fisac import pieces
 from fisac.models import SaleLine, VatReturn
+from fisac.routers import vat_periods
 
 
 async def _year(client):
@@ -91,3 +93,21 @@ async def test_franchise_has_no_periods(client, session):
         "regime": "franchise", "periods": [],
     }
     assert (await client.get("/api/fiscal-years/999/vat-periods")).status_code == 404
+
+
+async def test_concurrent_first_reads_both_succeed(client, monkeypatch):
+    # Two first reads at once (StrictMode, two tabs) both create the year's rows; the
+    # commit is slowed so that both have read "no rows" before either commits.
+    original = vat_periods.commit
+
+    async def slow_commit(session):
+        await asyncio.sleep(0.1)
+        await original(session)
+
+    monkeypatch.setattr(vat_periods, "commit", slow_commit)
+    await client.post("/api/fiscal-years")
+    fy = await _year(client)
+    results = await asyncio.gather(*[client.get(f"/api/fiscal-years/{fy}/vat-periods") for _ in range(2)])
+    assert [r.status_code for r in results] == [200, 200], [r.text for r in results]
+    ids = [[p["id"] for p in r.json()["periods"]] for r in results]
+    assert ids[0] == ids[1] and len(ids[0]) == 4

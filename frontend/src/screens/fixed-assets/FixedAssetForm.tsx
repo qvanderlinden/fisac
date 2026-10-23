@@ -205,11 +205,10 @@ function AssetFields({
       {purchase ? (
         <PurchasePanel
           id={asset.purchase_id}
-          onClose={() => {
-            setPurchase(false)
-            // The line's amount, VAT scheme or the booking date may have moved the value and the schedule.
-            void editor.reload()
-          }}
+          onClose={() => setPurchase(false)}
+          // The line's amount, VAT scheme or the booking date may have moved the value and the
+          // schedule: reloaded once the purchase's last save has been answered.
+          onSettled={() => void editor.reload()}
         />
       ) : null}
     </>

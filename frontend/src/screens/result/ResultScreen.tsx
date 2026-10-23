@@ -15,8 +15,8 @@ import { pieceSide, type ResultRow } from './resultView'
 
 /**
  * The Résultat screen: tiles and the income statement by category, with depreciation by asset.
- * A category row lists its pieces, a piece opens in its panel (the result reloads when it
- * closes), an asset row goes to that asset in Immobilisations.
+ * A category row lists its pieces, a piece opens in its panel (the result reloads once its
+ * last save has landed), an asset row goes to that asset in Immobilisations.
  */
 export function ResultScreen() {
   const mobile = useMediaQuery('(max-width: 640px)')
@@ -45,8 +45,10 @@ export function ResultScreen() {
 
   function closePiece() {
     setPiece(null)
-    void result.reload()
   }
+
+  // Once the panel's last save or its delete has been answered, not as it closes.
+  const reload = () => void result.reload()
 
   const list = { result: result.data, year, onOpen: open }
   return (
@@ -57,8 +59,8 @@ export function ResultScreen() {
       {row && !piece ? (
         <ResultDetail row={row} year={year} mobile={mobile} onOpen={setPiece} onClose={() => setRow(null)} />
       ) : null}
-      {piece && side === 'sale' ? <SalePanel id={piece.piece_id} onClose={closePiece} /> : null}
-      {piece && side === 'purchase' ? <PurchasePanel id={piece.piece_id} onClose={closePiece} /> : null}
+      {piece && side === 'sale' ? <SalePanel id={piece.piece_id} onClose={closePiece} onSettled={reload} /> : null}
+      {piece && side === 'purchase' ? <PurchasePanel id={piece.piece_id} onClose={closePiece} onSettled={reload} /> : null}
     </div>
   )
 }

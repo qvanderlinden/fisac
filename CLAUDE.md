@@ -136,7 +136,7 @@ pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
 empty state, opening the first fiscal year, the seven configuration screens,
 then a sale (1 000 at Ventes 21 %), a purchase (1 500 at Achats 21 % ·
 récupérable) and the fixed asset taking that line over, checked in the journal,
-the VAT period (T4) and the result, with ventes, achats, immobilisations,
+the VAT period of today's quarter and the result, with ventes, achats, immobilisations,
 journaux, tva and résultat at 1440 and 390 px, writing screenshots to the
 gitignored `frontend/smoke/`. It needs the
 stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database

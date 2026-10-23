@@ -126,10 +126,8 @@ export function FixedAssetsScreen() {
       {purchase !== null ? (
         <PurchasePanel
           id={purchase}
-          onClose={() => {
-            setPurchase(null)
-            refresh()
-          }}
+          onClose={() => setPurchase(null)}
+          onSettled={refresh}
         />
       ) : null}
     </>

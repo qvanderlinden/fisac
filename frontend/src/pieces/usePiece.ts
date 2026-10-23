@@ -37,6 +37,7 @@ export interface PieceEditor<T extends AnyPiece> {
    * Asks the screen to hide the form. Once it has unmounted (so the saves its fields
    * flush are queued first), a piece created in this session (`isNew`) and left with no
    * line and no tiers is deleted; a piece that existed before is never deleted here.
+   * `onSettled` follows once that and every save before it has reached the server.
    */
   close(): void
 }
@@ -50,7 +51,15 @@ export interface PieceEditor<T extends AnyPiece> {
 export function usePiece<T extends AnyPiece>(
   side: PieceSide,
   id: number,
-  o: { initial?: T; isNew?: boolean; onChange?(piece: T): void; onDeleted?(id: number): void; onClose(): void },
+  o: {
+    initial?: T
+    isNew?: boolean
+    onChange?(piece: T): void
+    onDeleted?(id: number): void
+    onClose(): void
+    /** Once the form has unmounted and every save and delete it queued has been answered. */
+    onSettled?(): void
+  },
 ): PieceEditor<T> {
   const [piece, setPiece] = useState<T | undefined>(o.initial?.id === id ? o.initial : undefined)
   const [error, setError] = useState<unknown>()
@@ -80,22 +89,29 @@ export function usePiece<T extends AnyPiece>(
     }
   }, [path, id])
 
-  // The fields' unmount cleanups flush their saves after this one runs: the check waits a microtask.
-  useEffect(
-    () => () => {
-      if (!closing.current || !latest.current.isNew) return
+  // The fields' unmount cleanups flush their saves after this one runs: the close-time
+  // delete and `onSettled` wait a microtask, so they queue behind those saves. StrictMode's
+  // rehearsal unmount is followed at once by a remount, which the microtask sees.
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
       queueMicrotask(() => {
-        enqueue(async () => {
-          const p = current.current
-          if (dead.current || !p || p.lines.length > 0 || p.third_party_id !== null) return
-          await api.del(path)
-          dead.current = true
-          latest.current.onDeleted?.(id)
-        }).catch((e) => toast(messageOf(e), { tone: 'negative' }))
+        if (mounted.current) return
+        if (closing.current && latest.current.isNew) {
+          enqueue(async () => {
+            const p = current.current
+            if (dead.current || !p || p.lines.length > 0 || p.third_party_id !== null) return
+            await api.del(path)
+            dead.current = true
+            latest.current.onDeleted?.(id)
+          }).catch((e) => toast(messageOf(e), { tone: 'negative' }))
+        }
+        void enqueue.drained().then(() => latest.current.onSettled?.())
       })
-    },
-    [],
-  )
+    }
+  }, [])
 
   function run(request: () => Promise<T>): Promise<boolean> {
     return enqueue(async () => {

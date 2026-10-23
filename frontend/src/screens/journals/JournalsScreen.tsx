@@ -15,7 +15,7 @@ import { MovementDetail } from './MovementDetail'
 /**
  * The Journaux screen: one tab per financial account (the journal computed from the pieces'
  * payments, read only). A sale or purchase movement opens its piece in its panel and the
- * journals reload when it closes; a card statement opens the purchases it settles.
+ * journals reload once its last save has landed; a card statement opens the purchases it settles.
  */
 export function JournalsScreen() {
   const mobile = useMediaQuery('(max-width: 640px)')
@@ -41,8 +41,10 @@ export function JournalsScreen() {
 
   function closePiece() {
     setOpen(null)
-    void journals.reload()
   }
+
+  // Once the panel's last save or its delete has been answered, not as it closes.
+  const reload = () => void journals.reload()
 
   const list = { journal, year, onOpen: setOpen }
   const piece = open?.piece_id != null ? open : null
@@ -87,8 +89,8 @@ export function JournalsScreen() {
         <EmptyState icon={BookOpen} title="Aucun journal" />
       )}
 
-      {piece?.kind === 'sale' ? <SalePanel id={piece.piece_id!} onClose={closePiece} /> : null}
-      {piece?.kind === 'purchase' ? <PurchasePanel id={piece.piece_id!} onClose={closePiece} /> : null}
+      {piece?.kind === 'sale' ? <SalePanel id={piece.piece_id!} onClose={closePiece} onSettled={reload} /> : null}
+      {piece?.kind === 'purchase' ? <PurchasePanel id={piece.piece_id!} onClose={closePiece} onSettled={reload} /> : null}
       {open?.kind === 'card_statement' ? (
         <MovementDetail movement={open} journals={all} methods={methods.data} mobile={mobile} onClose={() => setOpen(null)} />
       ) : null}

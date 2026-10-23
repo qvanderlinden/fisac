@@ -14,7 +14,8 @@ import { defaultPeriod, periodLabel } from './vatView'
 /**
  * The TVA screen: one tab per period of the fiscal year (quarters or months, from the company's
  * regime) with its summary, its filing date typed in place and its pieces; a piece opens its
- * panel and the periods reload when it closes. A franchise or VAT-free company has no return.
+ * panel and the periods reload once its last save has landed. A franchise or VAT-free company
+ * has no return.
  */
 export function VatScreen() {
   const mobile = useMediaQuery('(max-width: 640px)')
@@ -42,8 +43,10 @@ export function VatScreen() {
 
   function closePiece() {
     setOpen(null)
-    void vat.reload()
   }
+
+  // Once the panel's last save or its delete has been answered, not as it closes.
+  const reload = () => void vat.reload()
 
   const view = { onSaved: saved, onOpen: setOpen }
   const options = periods.map((p) => ({ value: String(p.id), label: periodLabel(p, regime) }))
@@ -87,8 +90,8 @@ export function VatScreen() {
         </Callout>
       )}
 
-      {open?.kind === 'sale' ? <SalePanel id={open.piece_id} onClose={closePiece} /> : null}
-      {open?.kind === 'purchase' ? <PurchasePanel id={open.piece_id} onClose={closePiece} /> : null}
+      {open?.kind === 'sale' ? <SalePanel id={open.piece_id} onClose={closePiece} onSettled={reload} /> : null}
+      {open?.kind === 'purchase' ? <PurchasePanel id={open.piece_id} onClose={closePiece} onSettled={reload} /> : null}
     </div>
   )
 }

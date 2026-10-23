@@ -14,6 +14,11 @@ export interface SidePanelProps<T extends SaleRead | PurchaseRead> {
   onChange?(piece: T): void
   onDeleted?(id: number): void
   /**
+   * Once the form has gone and its last save or its delete has been answered: when the
+   * host reloads figures computed from the piece (journals, VAT, result, an asset).
+   */
+  onSettled?(): void
+  /**
    * Just created by "Nouvelle vente" / "Nouvel achat": the title says so, and closing it
    * with no line and no tiers deletes it. A piece opened otherwise is never deleted on close.
    */
@@ -56,7 +61,7 @@ function LoadingPanel<T extends SaleRead | PurchaseRead>(p: Props<T>) {
 /**
  * A sale or a purchase open in its form (desktop dialog, mobile full screen), without
  * its list (R2): `SalePanel` and `PurchasePanel` wrap it, so the Journaux, TVA and
- * Résultat screens open a piece in place with `<SalePanel id onClose />`.
+ * Résultat screens open a piece in place with `<SalePanel id onClose onSettled />`.
  */
 export function SidePanel<T extends SaleRead | PurchaseRead>(p: Props<T>) {
   return p.refs ? <Panel {...p} refs={p.refs} /> : <LoadingPanel {...p} />

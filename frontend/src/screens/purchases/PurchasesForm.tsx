@@ -14,7 +14,7 @@ export function assetPath(assetId: number): string {
 
 /**
  * A purchase open in its form (desktop dialog, mobile full screen), without the list: the
- * Journaux, TVA and Résultat screens open a piece in place with `<PurchasePanel id onClose />`.
+ * Journaux, TVA and Résultat screens open a piece in place with `<PurchasePanel id onClose onSettled />`.
  * A line taken over by a fixed asset shows "au registre · I-004", which opens that asset.
  */
 export function PurchasePanel(p: PurchasePanelProps) {

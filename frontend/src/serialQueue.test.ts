@@ -70,3 +70,41 @@ describe('createSerialQueue', () => {
     expect(log).toEqual(['a', 'b'])
   })
 })
+
+describe('createSerialQueue drained', () => {
+  it('resolves once every task queued before it has settled, failures included', async () => {
+    const enqueue = createSerialQueue()
+    const log: string[] = []
+    const gate = deferred()
+
+    enqueue(async () => {
+      await gate.promise
+      log.push('a')
+    })
+    enqueue(async () => {
+      throw new Error('boom')
+    }).catch(() => log.push('b:failed'))
+    const drained = enqueue.drained().then(() => log.push('drained'))
+
+    await tick()
+    expect(log).toEqual([])
+    gate.resolve()
+    await drained
+    expect(log).toEqual(['a', 'b:failed', 'drained'])
+  })
+
+  it('does not wait for tasks added after it', async () => {
+    const enqueue = createSerialQueue()
+    const gate = deferred()
+    const drained = enqueue.drained()
+    const later = enqueue(() => gate.promise)
+
+    await expect(drained).resolves.toBeUndefined()
+    gate.resolve()
+    await later
+  })
+
+  it('resolves at once on an empty queue', async () => {
+    await expect(createSerialQueue().drained()).resolves.toBeUndefined()
+  })
+})
