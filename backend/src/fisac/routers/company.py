@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fisac.db import get_session
@@ -17,10 +18,10 @@ async def get_or_create(session: AsyncSession) -> Company:
     """The single company row (id 1), created with its defaults on first use."""
     company = await session.get(Company, 1)
     if company is None:
-        company = Company(id=1)
-        session.add(company)
+        # Concurrent first requests all get here; the losers insert nothing.
+        await session.execute(pg_insert(Company).values(id=1).on_conflict_do_nothing())
         await session.commit()
-        await session.refresh(company)
+        company = await session.get(Company, 1)
     return company
 
 

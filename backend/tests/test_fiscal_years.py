@@ -33,7 +33,6 @@ async def test_two_posts_open_consecutive_years(client):
 
 
 async def test_concurrent_posts_open_consecutive_years(client):
-    await client.get("/api/company")  # the company row exists before the race
     responses = await asyncio.gather(*(client.post("/api/fiscal-years") for _ in range(4)))
     assert [r.status_code for r in responses] == [201] * 4
     years = sorted(
@@ -83,3 +82,14 @@ async def test_equity_lines(client, session):
         ("Réserve", "10.00"),
         ("Perte reportée", "-33428.16"),
     ]
+
+
+async def test_concurrent_first_requests_on_empty_database(client):
+    responses = await asyncio.gather(
+        client.get("/api/company"),
+        client.get("/api/company"),
+        client.get("/api/fiscal-years/next"),
+        client.post("/api/fiscal-years"),
+        client.post("/api/fiscal-years"),
+    )
+    assert [r.status_code for r in responses] == [200, 200, 200, 201, 201]
