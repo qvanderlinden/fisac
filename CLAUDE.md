@@ -40,6 +40,7 @@ fisac/
     src/
     scripts/
       check-design.mjs   # design-system compliance guard (npm run check:design)
+      smoke.mjs          # Playwright end-to-end smoke (npm run smoke)
   backend/
     alembic.ini
     migrations/
@@ -108,7 +109,8 @@ End-to-end smoke: `cd frontend && npm run smoke` drives Chromium (Playwright,
 pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
 empty state, opening the first fiscal year and the seven screens at 1440 and
 390 px, writing screenshots to the gitignored `frontend/smoke/`. It needs the
-stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database.
+stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database
+(it opens the first fiscal year, so a second run on the same database fails).
 
 ## Frontend design system
 

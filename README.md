@@ -74,7 +74,8 @@ Tests and smoke:
   `postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test`, a role allowed
   to create databases).
 - `cd frontend && npm run smoke` is an end-to-end check in Chromium
-  (Playwright); it needs the stack above running on a fresh database and saves
+  (Playwright); it needs the stack above running on a fresh database (a second run fails: the
+  first fiscal year is already open) and saves
   screenshots to `frontend/smoke/` (gitignored).
 
 There is no linter or type checker on the Python side.

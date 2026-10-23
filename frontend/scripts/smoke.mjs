@@ -2,10 +2,11 @@
 // `npm run dev` on :5173, against a fresh database. Saves screenshots under
 // smoke/ and exits non-zero on a failed check or a console error.
 import { mkdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
 const BASE = process.env.SMOKE_URL ?? 'http://localhost:5173'
-const OUT = new URL('../smoke/', import.meta.url).pathname
+const OUT = fileURLToPath(new URL('../smoke/', import.meta.url))
 const SCREENS = [
   ['societe', '/societe'],
   ['tiers', '/tiers'],
@@ -30,8 +31,20 @@ const check = (ok, what) => {
 let browser
 try {
   browser = await chromium.launch()
-} catch {
+} catch (e) {
+  console.warn(`default Chromium launch failed (${e.message.split('\n')[0]}); using /opt/pw-browsers/chromium`)
   browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+}
+
+// Both empty states first: opening the year (below, at the first width) makes "/" redirect.
+for (const [width, height] of WIDTHS) {
+  const page = await browser.newPage({ viewport: { width, height } })
+  page.on('console', (m) => m.type() === 'error' && check(false, `console error (${width}): ${m.text()}`))
+  await page.goto(`${BASE}/`)
+  await page.waitForLoadState('networkidle')
+  await page.getByRole('button', { name: 'Ouvrir l’exercice 2026' }).waitFor()
+  await page.screenshot({ path: `${OUT}empty-${width}.png`, fullPage: true })
+  await page.close()
 }
 
 for (const [i, [width, height]] of WIDTHS.entries()) {
@@ -44,16 +57,10 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
   await page.goto(`${BASE}/`)
   await settle()
   if (i === 0) {
-    const open = page.getByRole('button', { name: 'Ouvrir l’exercice 2026' })
-    await open.waitFor()
-    await shot('empty')
-    await open.click()
-    await page.waitForURL('**/societe')
-    check(true, 'first fiscal year opened, "/" lands on /societe')
-  } else {
-    await page.waitForURL('**/societe')
-    await shot('empty')
+    await page.getByRole('button', { name: 'Ouvrir l’exercice 2026' }).click()
   }
+  await page.waitForURL('**/societe')
+  if (i === 0) check(true, 'first fiscal year opened, "/" lands on /societe')
 
   for (const [name, path] of SCREENS) {
     await page.goto(`${BASE}${path}`)
