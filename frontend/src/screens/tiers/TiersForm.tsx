@@ -1,21 +1,25 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Info } from 'lucide-react'
-import { Badge, Callout, Field, Icon, Input, Tooltip, toast } from '@qvanderlinden/ui'
+import { Badge, Callout, Field, Icon, Input, Tooltip } from '@qvanderlinden/ui'
 import type { ThirdPartyRead } from '../../api/types'
-import { messageOf } from '../../errors'
 import { countLabel } from '../../format'
 import { useAutosave } from '../../hooks/useAutosave'
 import { checkIban, groupIban, normalizeIban } from '../../iban'
+import type { SaveResult } from '../../lists/useEditSession'
 import { usesLabel } from './tiersList'
 
-/** One autosaved field, as `TiersScreen` sends it: a name, or an IBAN already checked (null clears it). */
-export type TiersPatch = { name: string } | { iban: string | null }
+/** The values the form edits: the name as typed, the IBAN normalised (null for none). */
+export interface TiersFields {
+  name: string
+  iban: string | null
+}
 
 /**
  * The fields of a tiers, shared by the desktop dialog and the mobile full-screen form
- * (`Tiers` and `MobileTiers` artboards). Each field saves itself; a failed save shows
- * the error and puts the server's value back. An IBAN is checked as it is typed and
- * only a valid or empty one is sent.
+ * (`Tiers` and `MobileTiers` artboards). Each field saves itself; when a save fails
+ * (the session toasts it) the field goes back to the value the server last confirmed,
+ * unless it was typed again since. An IBAN is checked as it is typed and only a valid
+ * or empty one is sent.
  */
 export function TiersForm({
   row,
@@ -27,29 +31,29 @@ export function TiersForm({
   row: ThirdPartyRead | undefined
   isNew: boolean
   mobile: boolean
-  onSave(patch: TiersPatch): Promise<void>
+  onSave(patch: Partial<TiersFields>): Promise<SaveResult<TiersFields>>
 }) {
   const [name, setName] = useState(row?.name ?? '')
   const [nameTyped, setNameTyped] = useState(false)
   const [iban, setIban] = useState(groupIban(row?.iban ?? ''))
   const check = checkIban(iban)
+  // What the inputs hold now, read when a save answers.
+  const typed = useRef({ name, iban })
 
   const nameSaver = useAutosave(async (value) => {
-    try {
-      await onSave({ name: value })
-    } catch (e) {
-      toast(messageOf(e), { tone: 'negative' })
-      setName(row?.name ?? '')
+    const result = await onSave({ name: value })
+    if (!result.ok && typed.current.name === value) {
+      typed.current.name = result.server.name
+      setName(result.server.name)
     }
   })
 
   const ibanSaver = useAutosave(async (value) => {
     if (checkIban(value).state === 'invalid') return
-    try {
-      await onSave({ iban: normalizeIban(value) })
-    } catch (e) {
-      toast(messageOf(e), { tone: 'negative' })
-      setIban(groupIban(row?.iban ?? ''))
+    const result = await onSave({ iban: normalizeIban(value) })
+    if (!result.ok && typed.current.iban === value) {
+      typed.current.iban = groupIban(result.server.iban ?? '')
+      setIban(typed.current.iban)
     }
   })
 
@@ -80,6 +84,7 @@ export function TiersForm({
           placeholder="Société ou personne"
           value={name}
           onChange={(e) => {
+            typed.current.name = e.target.value
             setName(e.target.value)
             setNameTyped(true)
             nameSaver.onChange(e.target.value)
@@ -114,6 +119,7 @@ export function TiersForm({
           spellCheck={false}
           value={iban}
           onChange={(e) => {
+            typed.current.iban = e.target.value
             setIban(e.target.value)
             ibanSaver.onChange(e.target.value)
           }}

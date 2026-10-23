@@ -168,7 +168,7 @@ export function TiersTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {view.rows.map((t, i) => {
+            {view.rows.map((t) => {
               const name = displayName(t)
               const badge = ibanBadge(t)
               const selected = selection.selected.has(t.id)
@@ -210,7 +210,6 @@ export function TiersTable({
                         onClick={() => onDelete([t.id])}
                       />
                       <RowMenu
-                        up={view.rows.length > 3 && i >= view.rows.length - 2}
                         items={[
                           {
                             label: 'Copier l’IBAN',
