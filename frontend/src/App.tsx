@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { Placeholder } from './screens/Placeholder'
+import { TiersScreen } from './screens/tiers/TiersScreen'
 import { AppShell } from './shell/AppShell'
 import { FiscalYearProvider } from './shell/FiscalYearContext'
 
@@ -12,7 +13,7 @@ export default function App() {
             {/* The shell shows the first-year step on "/" while no year exists; this redirect renders only once one does. */}
             <Route index element={<Navigate to="/societe" replace />} />
             <Route path="societe" element={<Placeholder title="Structure société" />} />
-            <Route path="tiers" element={<Placeholder title="Tiers" />} />
+            <Route path="tiers" element={<TiersScreen />} />
             <Route path="categories" element={<Placeholder title="Catégories" />} />
             <Route path="regimes-tva" element={<Placeholder title="Régimes de TVA" />} />
             <Route path="regimes-isoc" element={<Placeholder title="Régimes ISOC" />} />
