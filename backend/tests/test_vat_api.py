@@ -3,7 +3,7 @@ from datetime import date
 from conftest import add_purchase_line, add_sale
 
 from fisac import pieces
-from fisac.models import SaleLine
+from fisac.models import SaleLine, VatReturn
 
 
 async def _year(client):
@@ -53,6 +53,8 @@ async def test_patch_filed_on(client, session):
     r = await client.patch(f"/api/vat-periods/{q1['id']}", json={"filed_on": "2026-04-15"})
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "filed" and r.json()["filed_on"] == "2026-04-15"
+    assert r.json()["sales_net"] == "1000.00" and r.json()["balance"] == "210.00"
+    assert r.json()["pieces"][0]["net"] == "1000.00"
     r = await client.patch(f"/api/vat-periods/{q1['id']}", json={"filed_on": None})
     assert r.json()["status"] != "filed"
     assert (await client.patch("/api/vat-periods/999", json={"filed_on": None})).status_code == 404
@@ -75,7 +77,10 @@ async def test_monthly_regime_and_stale_rows(client, session):
     back = (await client.get(f"/api/fiscal-years/{fy}/vat-periods")).json()["periods"]
     assert len(back) == 4 and back[0]["end"] == "2026-03-31" and back[0]["id"] == first[0]["id"]
     february = next(p for p in months.values() if p["start"] == "2026-02-01")
-    assert (await client.patch(f"/api/vat-periods/{february['id']}", json={"filed_on": None})).status_code == 404
+    assert (await client.patch(f"/api/vat-periods/{february['id']}", json={"filed_on": "2026-03-01"})).status_code == 404
+    await session.rollback()
+    row = await session.get(VatReturn, february["id"])
+    assert row.filed_on is None  # the refused PATCH changed nothing
 
 
 async def test_franchise_has_no_periods(client, session):

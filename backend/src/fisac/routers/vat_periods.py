@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
@@ -84,13 +85,13 @@ async def read_vat_periods(year_id: int, session: AsyncSession = Depends(get_ses
         result.append({
             "id": row_id, "start": start, "end": end, "due": vat.due_date(end),
             "filed_on": filed_on, "status": vat.status(end, filed_on, today),
-            **summary.__dict__,
+            **asdict(summary),
             "pieces": [fields for _, fields in mine],
         })
     return {"regime": regime, "periods": result}
 
 
-@router.patch("/vat-periods/{period_id}")
+@router.patch("/vat-periods/{period_id}", response_model=VatPeriodRead)
 async def update_vat_period(
     period_id: int, body: VatPeriodUpdate, session: AsyncSession = Depends(get_session)
 ):
@@ -98,6 +99,11 @@ async def update_vat_period(
     if row is None:
         raise not_found("Période de TVA")
     year_id = row.fiscal_year_id
+    year = await session.get(FiscalYear, year_id)
+    regime = (await get_or_create(session)).vat_regime
+    current = vat.periods(year.start_date, year.end_date, regime)
+    if (row.period_start, row.period_end) not in current:
+        raise not_found("Période de TVA")  # left over from another regime
     row.filed_on = body.filed_on
     await commit(session)
     periods = await read_vat_periods(year_id, session)
