@@ -34,8 +34,9 @@ export interface PieceEditor<T extends AnyPiece> {
   /** Deletes the piece after the pending saves; later saves are dropped. */
   remove(): void
   /**
-   * Asks the screen to hide the form. Once it has unmounted (so the saves its
-   * fields flush are queued first), a piece left with no line and no tiers is deleted.
+   * Asks the screen to hide the form. Once it has unmounted (so the saves its fields
+   * flush are queued first), a piece created in this session (`isNew`) and left with no
+   * line and no tiers is deleted; a piece that existed before is never deleted here.
    */
   close(): void
 }
@@ -49,7 +50,7 @@ export interface PieceEditor<T extends AnyPiece> {
 export function usePiece<T extends AnyPiece>(
   side: PieceSide,
   id: number,
-  o: { initial?: T; onChange?(piece: T): void; onDeleted?(id: number): void; onClose(): void },
+  o: { initial?: T; isNew?: boolean; onChange?(piece: T): void; onDeleted?(id: number): void; onClose(): void },
 ): PieceEditor<T> {
   const [piece, setPiece] = useState<T | undefined>(o.initial?.id === id ? o.initial : undefined)
   const [error, setError] = useState<unknown>()
@@ -82,7 +83,7 @@ export function usePiece<T extends AnyPiece>(
   // The fields' unmount cleanups flush their saves after this one runs: the check waits a microtask.
   useEffect(
     () => () => {
-      if (!closing.current) return
+      if (!closing.current || !latest.current.isNew) return
       queueMicrotask(() => {
         enqueue(async () => {
           const p = current.current

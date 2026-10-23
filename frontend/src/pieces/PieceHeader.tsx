@@ -15,7 +15,11 @@ const COPY = {
   purchase: { tiers: 'Fournisseur', placeholder: 'Ce qui a été acheté', paid: 'Payé' },
 }
 
-/** A date field that saves itself; a blank date is not sent (the stored one comes back on blur). */
+/**
+ * A date field that saves itself on blur only: Chrome's date input reports each partial
+ * year typed ("0002"), so a timer would send them. A blank date is not sent (the stored
+ * one comes back on blur).
+ */
 function DateField({
   label,
   server,
@@ -25,7 +29,7 @@ function DateField({
   server: string
   save(date: string): Promise<boolean>
 }) {
-  const field = useSavedText(server, (text) => (text ? save(text) : Promise.resolve(true)))
+  const field = useSavedText(server, (text) => (text ? save(text) : Promise.resolve(true)), { delay: null })
   return (
     <Field label={label}>
       <Input type="date" {...field} />

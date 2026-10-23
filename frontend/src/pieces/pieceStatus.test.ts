@@ -7,6 +7,12 @@ describe('statusLabel', () => {
     expect(statusLabel('planned')).toEqual({ label: 'planifiée', tone: 'neutral' })
     expect(statusLabel('late')).toEqual({ label: 'en retard', tone: 'negative' })
   })
+
+  it('agrees with a purchase: payé, planifié', () => {
+    expect(statusLabel('paid', 'purchase')).toEqual({ label: 'payé', tone: 'positive' })
+    expect(statusLabel('planned', 'purchase')).toEqual({ label: 'planifié', tone: 'neutral' })
+    expect(statusLabel('late', 'purchase')).toEqual({ label: 'en retard', tone: 'negative' })
+  })
 })
 
 describe('reference', () => {

@@ -15,15 +15,21 @@ describe('messageOf', () => {
   })
 
   it('counts the pieces that block a delete', () => {
-    expect(messageOf(apiError({ status: 409, code: 'in_use', uses: 2, message: 'x' }))).toBe(
+    expect(messageOf(apiError({ status: 409, code: 'in_use', uses: 2, message: 'Porté par 2 pièce(s) : impossible de le supprimer' }))).toBe(
       'Porté par 2 pièces : impossible de le supprimer',
     )
-    expect(messageOf(apiError({ status: 409, code: 'in_use', uses: 1, message: 'x' }))).toBe(
+    expect(messageOf(apiError({ status: 409, code: 'in_use', uses: 1, message: 'Porté par 1 pièce(s) : impossible de le supprimer' }))).toBe(
       'Porté par 1 pièce : impossible de le supprimer',
     )
     expect(messageOf(apiError({ status: 409, code: 'in_use', uses: 0, message: 'Utilisé par d’autres données' }))).toBe(
       'Utilisé par d’autres données',
     )
+  })
+
+  it('gives the server’s own in-use detail', () => {
+    expect(
+      messageOf(apiError({ status: 409, code: 'in_use', uses: 1, message: 'Reprise par l’immobilisation I-004' })),
+    ).toBe('Reprise par l’immobilisation I-004')
   })
 
   it('gives the server detail of another refusal', () => {

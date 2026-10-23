@@ -16,7 +16,7 @@ const RETRY = 'Réessayez dans un instant.'
 /**
  * The French message a toast shows for a failure. The API's own details are
  * French (404, 409, the translated constraints); a 422 shows its first field
- * message, an in-use delete counts the pieces that block it.
+ * message, a generic in-use refusal counts the pieces that block it.
  */
 export function messageOf(e: unknown): string {
   // fetch() rejects with a TypeError when the server can't be reached at all
@@ -26,7 +26,9 @@ export function messageOf(e: unknown): string {
   }
   if (isApiError(e)) {
     if (e.status >= 500) return `Le serveur a rencontré une erreur. ${RETRY}`
-    if (e.code === 'in_use' && e.uses) {
+    // The generic in-use detail ("Porté par 2 pièce(s)…") is counted here; a specific one
+    // ("Reprise par l’immobilisation I-004") is shown as the server wrote it.
+    if (e.code === 'in_use' && e.uses && /^Porté par \d+ pièce\(s\)/.test(e.message)) {
       return `Porté par ${countLabel(e.uses, 'pièce', 'pièces')} : impossible de le supprimer`
     }
     return Object.values(e.fields)[0] ?? e.message

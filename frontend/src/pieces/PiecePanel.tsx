@@ -7,27 +7,15 @@ import { FullScreenForm } from '../lists/FullScreenForm'
 import { eur } from '../format'
 import { signed } from './piecesList'
 import { reference } from './pieceStatus'
+import type { SideCopy } from './sideCopy'
 import { usePiece, type AnyPiece, type PieceEditor } from './usePiece'
 import type { PieceSide } from './usePieceRefs'
 
-/** The words of a side: "vente" / "achat". */
-export interface PieceCopy {
-  /** The title's noun: "Vente", and "Nouvelle vente" while just created. */
-  noun: string
-  newNoun: string
-  prefix: 'S' | 'A'
-  /** "Client · description", or "Vente sans description". */
-  describe(piece: AnyPiece): string
-  /** "Supprimer la vente". */
-  remove: string
-  /** What deleting it does, ending "C’est définitif." */
-  removeNote: string
-}
-
 /**
  * A sale or a purchase open in its form: the desktop dialog or the mobile full-screen
- * form, its delete with confirmation, and the close that deletes a piece left with no
- * line and no tiers. Usable without its list (R2): open it by id, it loads the piece.
+ * form, its delete with confirmation, and the close that deletes a piece just created
+ * (`isNew`) and left with no line and no tiers. Usable without its list (R2): open it by
+ * id, it loads the piece.
  */
 export function PiecePanel<T extends AnyPiece>({
   side,
@@ -46,13 +34,13 @@ export function PiecePanel<T extends AnyPiece>({
   isNew?: boolean
   initial?: T
   mobile: boolean
-  copy: PieceCopy
+  copy: SideCopy
   onClose(): void
   onChange?(piece: T): void
   onDeleted?(id: number): void
   children(editor: PieceEditor<T>, piece: T): ReactNode
 }) {
-  const editor = usePiece<T>(side, id, { initial, onChange, onDeleted, onClose })
+  const editor = usePiece<T>(side, id, { initial, isNew, onChange, onDeleted, onClose })
   const [confirming, setConfirming] = useState(false)
   const piece = editor.piece
 

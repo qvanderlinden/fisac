@@ -2,13 +2,18 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useAutosave } from '../hooks/useAutosave'
 
 /**
- * A text field of a piece that saves itself (on blur, or 500 ms after typing stops).
+ * A text field of a piece that saves itself (on blur, or 500 ms after typing stops;
+ * on blur only with `delay: null`, for a date field).
  * `server` is the stored value as the field shows it. While the field is focused or a
  * typed value is waiting for its answer, what is typed stays; otherwise the field
  * follows `server` (a total recomputed, "Rétablir", another field's answer). A failed
  * save (`save` resolves false) puts the server's value back, unless typed again since.
  */
-export function useSavedText(server: string, save: (text: string) => Promise<boolean>) {
+export function useSavedText(
+  server: string,
+  save: (text: string) => Promise<boolean>,
+  { delay = 500 }: { delay?: number | null } = {},
+) {
   const [text, setText] = useState(server)
   const typed = useRef<string | null>(null)
   const focused = useRef(false)
@@ -28,7 +33,7 @@ export function useSavedText(server: string, save: (text: string) => Promise<boo
     typed.current = null
     if (!ok) restore.current = true
     setSettled((n) => n + 1)
-  })
+  }, delay)
 
   return {
     value: text,

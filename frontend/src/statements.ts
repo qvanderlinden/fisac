@@ -42,3 +42,12 @@ export function nextStatements(closingDay: number, paymentDay: number, today: st
   }
   return out
 }
+
+/**
+ * The statement a card purchase paid on `day` falls in (the backend's
+ * `books/card_statements.statement_for`): it closes on the first `closingDay` from
+ * `day` on and is paid by the settlement account on `paymentDay` of the next month.
+ */
+export function statementFor(day: string, closingDay: number, paymentDay: number): Statement {
+  return nextStatements(closingDay, paymentDay, day, 1)[0]
+}

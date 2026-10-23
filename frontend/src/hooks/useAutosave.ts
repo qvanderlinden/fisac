@@ -9,11 +9,12 @@ export interface Autosaver {
 
 /**
  * Saves the last value typed once typing pauses for `delay` ms, or at once
- * on blur. A value is saved once: a blur after the timer fired sends nothing.
+ * on blur; with `delay` null, on blur only (a date input reports each partial
+ * year typed). A value is saved once: a blur after the timer fired sends nothing.
  * `save` reports its own failure (the screens restore the server value and
  * toast `messageOf`), so a rejection is swallowed here.
  */
-export function createAutosaver(save: (value: string) => Promise<void>, delay = 500): Autosaver {
+export function createAutosaver(save: (value: string) => Promise<void>, delay: number | null = 500): Autosaver {
   let timer: ReturnType<typeof setTimeout> | undefined
   let pending: { value: string } | undefined
 
@@ -30,7 +31,7 @@ export function createAutosaver(save: (value: string) => Promise<void>, delay = 
     onChange(value) {
       pending = { value }
       if (timer !== undefined) clearTimeout(timer)
-      timer = setTimeout(flush, delay)
+      if (delay !== null) timer = setTimeout(flush, delay)
     },
     onBlur: flush,
     flush,
@@ -40,7 +41,7 @@ export function createAutosaver(save: (value: string) => Promise<void>, delay = 
 /** Autosave for one field: wire `onChange` to the input's typing and `onBlur` to its blur. */
 export function useAutosave(
   save: (value: string) => Promise<void>,
-  delay = 500,
+  delay: number | null = 500,
 ): { onChange(value: string): void; onBlur(): void } {
   // The latest `save` is called, so a caller's closure over fresh state never goes stale.
   const saveRef = useRef(save)

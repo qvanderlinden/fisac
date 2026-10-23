@@ -1,29 +1,33 @@
 import { Search, X } from 'lucide-react'
 import { Button, Input, Select } from '@qvanderlinden/ui'
-import type { FiscalYearRead, SaleRead } from '../../api/types'
-import { NO_FILTER, isFiltered, type PieceFilter } from '../../pieces/piecesList'
-import { KIND_FILTERS, STATUS_FILTERS, filterValue, periodFilters, setFilter, tiersFilters } from './salesList'
-
-type Key = 'tiers' | 'status' | 'period' | 'kind'
+import type { FiscalYearRead, PieceRead } from '../api/types'
+import { KIND_FILTERS, filterValue, periodFilters, setFilter, statusFilters, tiersFilters, type FilterKey } from './listLabels'
+import { NO_FILTER, isFiltered, type PieceFilter } from './piecesList'
+import type { SideCopy } from './sideCopy'
 
 /**
- * The search and the four filters of the list (client, payment, quarter of the booking
- * date, type): one row with "Effacer les filtres" on desktop, a two-column grid on mobile.
+ * The search and the four filters of a list of sales or purchases (tiers, payment, VAT
+ * period of the booking date — a month when the company files monthly, else a quarter —,
+ * type): one row with "Effacer les filtres" on desktop, a two-column grid on mobile.
  */
-export function SalesFilters({
+export function PiecesFilters({
   rows,
+  copy,
   fiscalYear,
+  monthly,
   filter,
   onChange,
   mobile,
 }: {
-  rows: SaleRead[]
+  rows: PieceRead[]
+  copy: SideCopy
   fiscalYear: FiscalYearRead
+  monthly: boolean
   filter: PieceFilter
   onChange(filter: PieceFilter): void
   mobile: boolean
 }) {
-  const pick = (key: Key, label: string, options: { value: string; label: string }[], width: string) => (
+  const pick = (key: FilterKey, label: string, options: { value: string; label: string }[], width: string) => (
     <Select
       size={mobile ? 'md' : 'sm'}
       aria-label={label}
@@ -37,16 +41,16 @@ export function SalesFilters({
     <Input
       size={mobile ? 'md' : 'sm'}
       icon={Search}
-      aria-label="Chercher une description ou un client"
-      placeholder="Chercher une description ou un client"
-      className={mobile ? undefined : 'w-70'}
+      aria-label={copy.search}
+      placeholder={copy.search}
+      className={mobile ? undefined : 'w-80'}
       value={filter.query}
       onChange={(e) => onChange({ ...filter, query: e.target.value })}
     />
   )
-  const tiers = pick('tiers', 'Client', tiersFilters(rows), 'w-47.5')
-  const status = pick('status', 'Paiement', STATUS_FILTERS, 'w-40')
-  const period = pick('period', 'Trimestre', periodFilters(fiscalYear), 'w-36')
+  const tiers = pick('tiers', copy.tiers, tiersFilters(rows, copy), 'w-47.5')
+  const status = pick('status', 'Paiement', statusFilters(copy), 'w-40')
+  const period = pick('period', monthly ? 'Mois' : 'Trimestre', periodFilters(fiscalYear, monthly), 'w-40')
   const kind = pick('kind', 'Type', KIND_FILTERS, 'w-44')
 
   if (mobile) {

@@ -32,4 +32,15 @@ describe('createAutosaver', () => {
     createAutosaver(save).onBlur()
     expect(save).not.toHaveBeenCalled()
   })
+
+  it('saves on blur only when the delay is null (a date field)', () => {
+    const save = vi.fn(async (_value: string) => {})
+    const saver = createAutosaver(save, null)
+    saver.onChange('0002-03-14')
+    vi.advanceTimersByTime(5000)
+    expect(save).not.toHaveBeenCalled()
+    saver.onChange('2026-03-14')
+    saver.onBlur()
+    expect(save.mock.calls).toEqual([['2026-03-14']])
+  })
 })

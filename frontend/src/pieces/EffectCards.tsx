@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import type { PurchaseRead, SaleRead, VatRegime } from '../api/types'
 import { eur, formatDate, formatRate } from '../format'
-import { quarterOf, signOf } from './piecesList'
+import { statementFor } from '../statements'
+import { quarterOf, signOf, todayIso } from './piecesList'
 import { reference } from './pieceStatus'
 import type { PieceRefs, PieceSide } from './usePieceRefs'
 
@@ -58,7 +59,7 @@ export function EffectCards({
 }: {
   piece: SaleRead | PurchaseRead
   side: PieceSide
-  refs: Pick<PieceRefs, 'categories' | 'vatSchemes' | 'paymentMethods' | 'vatRegime'>
+  refs: Pick<PieceRefs, 'categories' | 'vatSchemes' | 'paymentMethods' | 'vatRegime' | 'accounts'>
 }) {
   const sign = signOf(piece.kind)
   const money = (c: number) => eur((sign * c) / 100)
@@ -87,15 +88,31 @@ export function EffectCards({
   // The journal: a sale brings money in, a purchase takes it out; a credit note the other way.
   // The word carries the direction, so the amount shows as typed.
   const receipt = (side === 'sale') === (piece.kind === 'invoice')
-  const account = refs.paymentMethods.find((m) => m.id === piece.payment_method_id)?.financial_account_name
-  const movement = [receipt ? 'Recette' : 'Dépense', account, formatDate(piece.payment_date)].filter(Boolean).join(' · ')
-  const cashNote = piece.paid
+  const method = refs.paymentMethods.find((m) => m.id === piece.payment_method_id)
+  const movement = [receipt ? 'Recette' : 'Dépense', method?.financial_account_name, formatDate(piece.payment_date)]
+    .filter(Boolean)
+    .join(' · ')
+  let cash: Row[] = [{ label: movement, amount: eur(piece.total) }]
+  let cashNote = piece.paid
     ? 'Réalisée.'
     : piece.status === 'late'
       ? 'En retard : la date de paiement prévue est passée.'
       : side === 'sale'
         ? 'Planifiée tant qu’elle n’est pas payée.'
         : 'Planifiée tant que l’achat n’est pas payé.'
+  // Paid by card: the purchase leaves the card's account on its payment date, and the bank
+  // pays it with the card's statement, on the statement's payment date (closing and payment
+  // days of the method, as the journals compute it). The bank's movement is the effect shown.
+  if (method?.type === 'card' && method.statement_closing_day !== null && method.statement_payment_day !== null) {
+    const statement = statementFor(piece.payment_date, method.statement_closing_day, method.statement_payment_day)
+    const bank = refs.accounts.find((a) => a.id === method.settlement_account_id)?.name
+    const month = formatDate(`${statement.month}-01`, 'long').split(' ')[0]
+    const label = [receipt ? 'Recette' : 'Dépense', bank, formatDate(statement.payment)].filter(Boolean).join(' · ')
+    cash = [{ label, amount: eur(piece.total) }]
+    cashNote = `Avec le décompte ${method.name} de ${month}, ${
+      statement.payment > todayIso() ? 'prévu' : 'payé'
+    } le ${formatDate(statement.payment, 'full')}. Par carte le ${formatDate(piece.payment_date, 'full')}, au journal ${method.financial_account_name}.`
+  }
 
   // The VAT return of the booking date's period.
   const period = vatPeriodLabel(piece.booking_date, refs.vatRegime)
@@ -126,7 +143,7 @@ export function EffectCards({
             : 'Le HTVA et la TVA que l’on ne récupère pas, à la date de comptabilisation.'
         }
       />
-      <Box title="Dans le journal financier" rows={[{ label: movement, amount: eur(piece.total) }]} note={cashNote} />
+      <Box title="Dans le journal financier" rows={cash} note={cashNote} />
       {period ? (
         <Box title={`Dans la déclaration TVA · ${period}`} rows={vatRows} />
       ) : (

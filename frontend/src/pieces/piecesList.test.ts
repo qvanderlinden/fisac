@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PieceRead } from '../api/types'
-import { NO_FILTER, filterPieces, quartersOf, totals, unpaidTotal } from './piecesList'
+import { NO_FILTER, filterPieces, periodOf, periodsOf, quartersOf, totals, unpaidTotal } from './piecesList'
 
 const piece = (id: number, over: Partial<PieceRead> = {}): PieceRead => ({
   id,
@@ -55,6 +55,59 @@ describe('filterPieces', () => {
     expect(ids({ query: 'fidu' })).toEqual([3])
     expect(ids({ query: ' prestations 2 ' })).toEqual([2])
     expect(ids({ query: 'S-0004' })).toEqual([4])
+  })
+})
+
+describe('the invoice / credit-note filter', () => {
+  // Achats: two invoices and a credit note from the same supplier.
+  const rows = [
+    piece(1, { net: '500.00', vat: '105.00', total: '605.00' }),
+    piece(2, { kind: 'credit_note', net: '100.00', vat: '21.00', total: '121.00' }),
+    piece(3, { net: '40.00', vat: '8.40', total: '48.40', paid: false, status: 'planned' }),
+  ]
+
+  it('keeps the invoices only, or the credit notes only', () => {
+    expect(filterPieces(rows, { ...NO_FILTER, kind: 'invoice' }).map((p) => p.id)).toEqual([1, 3])
+    expect(filterPieces(rows, { ...NO_FILTER, kind: 'credit_note' }).map((p) => p.id)).toEqual([2])
+  })
+
+  it('totals the credit notes shown as negative amounts', () => {
+    expect(totals(filterPieces(rows, { ...NO_FILTER, kind: 'credit_note' }))).toEqual({ net: -100, vat: -21, total: -121 })
+    expect(totals(filterPieces(rows, { ...NO_FILTER, kind: 'invoice' }))).toEqual({ net: 540, vat: 113.4, total: 653.4 })
+  })
+
+  it('combines with the status', () => {
+    expect(filterPieces(rows, { ...NO_FILTER, kind: 'invoice', status: 'planned' }).map((p) => p.id)).toEqual([3])
+  })
+})
+
+describe('the VAT period filter', () => {
+  const rows = [
+    piece(1, { booking_date: '2026-04-30' }),
+    piece(2, { document_date: '2026-04-28', booking_date: '2026-05-02' }),
+    piece(3, { booking_date: '2026-06-01' }),
+  ]
+
+  it('reads the period of a date as a quarter, or a month under a monthly regime', () => {
+    expect(periodOf('2026-05-02', false)).toBe('2026-2')
+    expect(periodOf('2026-05-02', true)).toBe('2026-05')
+  })
+
+  it('filters on the month of the booking date under a monthly regime', () => {
+    const ids = (period: string) => filterPieces(rows, { ...NO_FILTER, period }, true).map((p) => p.id)
+    expect(ids('2026-04')).toEqual([1])
+    expect(ids('2026-05')).toEqual([2])
+    expect(ids('2026-06')).toEqual([3])
+  })
+
+  it('lists the months of a fiscal year under a monthly regime, its quarters otherwise', () => {
+    const months = periodsOf({ start_date: '2025-07-01', end_date: '2026-06-30' }, true)
+    expect(months).toHaveLength(12)
+    expect(months[0]).toEqual({ value: '2025-07', label: 'juillet 2025' })
+    expect(months[11]).toEqual({ value: '2026-06', label: 'juin 2026' })
+    expect(periodsOf({ start_date: '2026-01-01', end_date: '2026-12-31' }, false)).toEqual(
+      quartersOf({ start_date: '2026-01-01', end_date: '2026-12-31' }),
+    )
   })
 })
 

@@ -2,60 +2,69 @@ import { useState } from 'react'
 import { Check, Copy, Download, FileMinus, Pencil, Plus, Receipt, Trash2, Undo2 } from 'lucide-react'
 import { Badge, Button, Card, Checkbox, EmptyState, IconButton } from '@qvanderlinden/ui'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
-import type { FiscalYearRead, SaleRead } from '../../api/types'
-import { countLabel, eur, formatDate } from '../../format'
-import { BulkBar, type BulkAction } from '../../lists/BulkBar'
-import { Pager } from '../../lists/Pager'
-import { RowMenu } from '../../lists/RowMenu'
-import { SortHeader } from '../../lists/SortHeader'
-import { listView, type SortDir } from '../../lists/listView'
-import { useSelection } from '../../lists/useSelection'
+import type { FiscalYearRead, PieceRead } from '../api/types'
+import { countLabel, eur, formatDate } from '../format'
+import { BulkBar, type BulkAction } from '../lists/BulkBar'
+import { Pager } from '../lists/Pager'
+import { RowMenu } from '../lists/RowMenu'
+import { SortHeader } from '../lists/SortHeader'
+import { listView, type SortDir } from '../lists/listView'
+import { useSelection } from '../lists/useSelection'
+import { countOf, dueNote, pieceLabel, rowAmount } from './listLabels'
+import { PiecesFilters } from './PiecesFilters'
 import {
   FIRST_DIR,
+  NO_FILTER,
   PIECE_COMPARE,
   filterPieces,
   isFiltered,
   totals,
   type PieceSortKey,
-} from '../../pieces/piecesList'
-import { reference, statusLabel } from '../../pieces/pieceStatus'
-import { SalesFilters } from './SalesFilters'
-import { NO_FILTER, countOf, rowAmount, saleLabel, toReceive } from './salesList'
+} from './piecesList'
+import { reference, statusLabel } from './pieceStatus'
+import { SIDE_COPY } from './sideCopy'
+import type { PieceSide } from './usePieceRefs'
 
-export interface SalesListProps {
-  rows: SaleRead[]
+export interface PiecesListProps<T extends PieceRead> {
+  side: PieceSide
+  rows: T[]
   fiscalYear: FiscalYearRead
+  /** The company files a monthly VAT return: the period filter lists months. */
+  monthly: boolean
   onAdd(): void
   onOpen(id: number): void
 }
 
 /**
- * The desktop list (`Ventes` artboard): title and "Nouvelle vente", search and filters,
- * sortable columns, the totals of the rows shown, selection with the bulk bar, the row
- * menu and pages of 25.
+ * The desktop list of sales or purchases (`Ventes` / `Achats` artboards): title and
+ * "Nouvelle vente" / "Nouvel achat", search and filters, sortable columns, the totals of
+ * the rows shown, selection with the bulk bar, the row menu and pages of 25.
  */
-export function SalesTable({
+export function PiecesTable<T extends PieceRead>({
+  side,
   rows,
   fiscalYear,
+  monthly,
   onAdd,
   onOpen,
   onDuplicate,
   onCreditNote,
   onSetPaid,
   onDelete,
-}: SalesListProps & {
-  onDuplicate(sale: SaleRead): void
-  onCreditNote(sale: SaleRead): void
+}: PiecesListProps<T> & {
+  onDuplicate(piece: T): void
+  onCreditNote(piece: T): void
   onSetPaid(ids: number[], paid: boolean): void
-  /** Asks to delete these sales; the screen confirms first. */
+  /** Asks to delete these pieces; the screen confirms first. */
   onDelete(ids: number[]): void
 }) {
+  const copy = SIDE_COPY[side]
   const [filter, setFilterState] = useState(NO_FILTER)
   const [sort, setSort] = useState<{ key: PieceSortKey; dir: SortDir }>({ key: 'date', dir: 'desc' })
   const [page, setPage] = useState(1)
   const selection = useSelection<number>()
 
-  const shown = filterPieces(rows, filter)
+  const shown = filterPieces(rows, filter, monthly)
   const view = listView(shown, { query: '', matches: () => true, sort, compare: PIECE_COMPARE, page })
   const sums = totals(shown)
   const pageIds = view.rows.map((s) => s.id)
@@ -82,7 +91,7 @@ export function SalesTable({
   )
 
   const bulk: BulkAction[] = [
-    { label: 'Marquer comme payées', icon: Check, run: () => onSetPaid(picked.map((s) => s.id), true) },
+    { label: copy.markPaidMany, icon: Check, run: () => onSetPaid(picked.map((s) => s.id), true) },
     { label: 'Exporter', icon: Download, disabled: true, title: 'bientôt', run: () => {} },
     { label: 'Supprimer', icon: Trash2, variant: 'danger', run: () => onDelete(picked.map((s) => s.id)) },
   ]
@@ -91,22 +100,28 @@ export function SalesTable({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div className="flex flex-col gap-2">
-          <h1 className="type-title text-4xl text-fg-strong">Ventes</h1>
-          <span className="text-sm text-fg-muted">
-            Le livre des ventes : chaque facture émise, numérotée, avec sa TVA et son paiement
-          </span>
+          <h1 className="type-title text-4xl text-fg-strong">{copy.title}</h1>
+          <span className="text-sm text-fg-muted">{copy.subtitle}</span>
         </div>
         <Button iconLeft={Plus} onClick={onAdd}>
-          Nouvelle vente
+          {copy.newNoun}
         </Button>
       </div>
 
-      <SalesFilters rows={rows} fiscalYear={fiscalYear} filter={filter} onChange={change} mobile={false} />
+      <PiecesFilters
+        rows={rows}
+        copy={copy}
+        fiscalYear={fiscalYear}
+        monthly={monthly}
+        filter={filter}
+        onChange={change}
+        mobile={false}
+      />
 
       <Card padding={false}>
         {picked.length > 0 ? (
           <BulkBar
-            label={countLabel(picked.length, 'vente sélectionnée', 'ventes sélectionnées')}
+            label={countLabel(picked.length, copy.selectedOne, copy.selectedMany)}
             note={`${eur(totals(picked).total)} TVAC`}
             actions={bulk}
             onClear={selection.clear}
@@ -117,14 +132,14 @@ export function SalesTable({
             <TableRow>
               <TableHead className="w-10">
                 <Checkbox
-                  aria-label="Sélectionner les ventes de la page"
+                  aria-label={`Sélectionner les ${copy.many} de la page`}
                   checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                   onCheckedChange={() => selection.toggleAll(pageIds)}
                 />
               </TableHead>
               {head('number', 'N°', 'w-24')}
               {head('date', 'Date', 'w-28')}
-              {head('tiers', 'Client', 'w-40')}
+              {head('tiers', copy.tiers, 'w-40')}
               {head('description', 'Description')}
               {head('status', 'Statut', 'w-28')}
               {head('net', 'HTVA', 'w-28 text-right')}
@@ -137,8 +152,8 @@ export function SalesTable({
           </TableHeader>
           <TableBody>
             {view.rows.map((s) => {
-              const ref = reference('S', s.number)
-              const status = statusLabel(s.status)
+              const ref = reference(copy.prefix, s.number)
+              const status = statusLabel(s.status, side)
               const selected = selection.selected.has(s.id)
               return (
                 <TableRow key={s.id} data-state={selected ? 'selected' : undefined} className="hover:bg-surface-hover">
@@ -162,7 +177,7 @@ export function SalesTable({
                         onClick={() => onOpen(s.id)}
                         className="cursor-pointer border-0 bg-transparent p-0 text-left text-sm font-medium text-fg-strong hover:text-fg-link hover:underline focus-visible:rounded-sm"
                       >
-                        {saleLabel(s)}
+                        {pieceLabel(s, copy)}
                       </button>
                       {s.kind === 'credit_note' ? <Badge tone="info">note de crédit</Badge> : null}
                     </div>
@@ -180,8 +195,8 @@ export function SalesTable({
                       <RowMenu
                         items={[
                           s.paid
-                            ? { label: 'Marquer comme non payée', icon: Undo2, run: () => onSetPaid([s.id], false) }
-                            : { label: 'Marquer comme payée', icon: Check, run: () => onSetPaid([s.id], true) },
+                            ? { label: copy.markUnpaid, icon: Undo2, run: () => onSetPaid([s.id], false) }
+                            : { label: copy.markPaid, icon: Check, run: () => onSetPaid([s.id], true) },
                           { label: 'Dupliquer', icon: Copy, run: () => onDuplicate(s) },
                           {
                             label: 'Créer la note de crédit',
@@ -190,7 +205,7 @@ export function SalesTable({
                             run: () => onCreditNote(s),
                           },
                           'separator',
-                          { label: 'Supprimer la vente', icon: Trash2, danger: true, run: () => onDelete([s.id]) },
+                          { label: copy.remove, icon: Trash2, danger: true, run: () => onDelete([s.id]) },
                         ]}
                       />
                     </div>
@@ -204,7 +219,7 @@ export function SalesTable({
                 <TableCell colSpan={5}>
                   <span className="text-sm font-semibold text-fg-strong">Total</span>
                   <span className="ml-3 text-xs text-fg-muted">
-                    {countOf(view.total, rows.length)} · {toReceive(shown)}
+                    {countOf(view.total, rows.length, copy)} · {dueNote(shown, copy)}
                   </span>
                 </TableCell>
                 <TableCell className="numeric text-right font-semibold whitespace-nowrap text-fg-strong">{eur(sums.net)}</TableCell>
@@ -218,7 +233,7 @@ export function SalesTable({
         {view.total === 0 ? (
           <EmptyState
             icon={Receipt}
-            title={filtered ? 'Aucune vente ne correspond à ces filtres' : 'Aucune vente pour l’instant'}
+            title={filtered ? copy.emptyFiltered : copy.empty}
           />
         ) : null}
         <Pager

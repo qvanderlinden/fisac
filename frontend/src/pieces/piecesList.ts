@@ -1,13 +1,14 @@
 import type { PieceKind, PieceRead, PieceStatus } from '../api/types'
+import { formatDate } from '../format'
 
-// What the Ventes and Achats lists share: the filters, the totals of the rows
+// What the Ventes and Achats lists share: the filters (the VAT period follows the company's regime), the totals of the rows
 // shown and the sort. Piece reads are unsigned (as typed): `kind` carries the
 // sign, applied here once.
 
 export interface PieceFilter {
   tiers: number | 'all'
   status: PieceStatus | 'all'
-  /** A calendar quarter of the booking date, `2026-3`, or 'all'. */
+  /** The VAT period of the booking date: a quarter `2026-3`, a month `2026-03` (monthly regime), or 'all'. */
   period: string
   kind: PieceKind | 'all'
   /** The search box: description, tiers or number. */
@@ -37,6 +38,23 @@ export function quartersOf(fy: { start_date: string; end_date: string }): { valu
   return options
 }
 
+/** The VAT period a booking date falls in: its month under a monthly regime, else its quarter. */
+export function periodOf(date: string, monthly: boolean): string {
+  return monthly ? date.slice(0, 7) : quarterOf(date)
+}
+
+/** The VAT periods a fiscal year touches, as filter options: `avril 2026` or `T3 2026`. */
+export function periodsOf(fy: { start_date: string; end_date: string }, monthly: boolean): { value: string; label: string }[] {
+  if (!monthly) return quartersOf(fy)
+  const index = (date: string) => Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1
+  const options = []
+  for (let i = index(fy.start_date); i <= index(fy.end_date); i++) {
+    const value = `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`
+    options.push({ value, label: formatDate(`${value}-01`, 'long') })
+  }
+  return options
+}
+
 function matches(p: PieceRead, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
@@ -46,12 +64,13 @@ function matches(p: PieceRead, query: string): boolean {
   return p.description.toLowerCase().includes(q) || (p.third_party_name ?? '').toLowerCase().includes(q)
 }
 
-export function filterPieces<T extends PieceRead>(rows: T[], f: PieceFilter): T[] {
+/** The rows the filter keeps; `monthly`: the period is a month (the company files monthly). */
+export function filterPieces<T extends PieceRead>(rows: T[], f: PieceFilter, monthly = false): T[] {
   return rows.filter(
     (p) =>
       (f.tiers === 'all' || p.third_party_id === f.tiers) &&
       (f.status === 'all' || p.status === f.status) &&
-      (f.period === 'all' || quarterOf(p.booking_date) === f.period) &&
+      (f.period === 'all' || periodOf(p.booking_date, monthly) === f.period) &&
       (f.kind === 'all' || p.kind === f.kind) &&
       matches(p, f.query),
   )

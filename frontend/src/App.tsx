@@ -5,6 +5,7 @@ import { IsocSchemesScreen } from './screens/isoc-schemes/IsocSchemesScreen'
 import { VatSchemesScreen } from './screens/vat-schemes/VatSchemesScreen'
 import { CompanyScreen } from './screens/company/CompanyScreen'
 import { CategoriesScreen } from './screens/categories/CategoriesScreen'
+import { PurchasesScreen } from './screens/purchases/PurchasesScreen'
 import { SalesScreen } from './screens/sales/SalesScreen'
 import { TiersScreen } from './screens/tiers/TiersScreen'
 import { AppShell } from './shell/AppShell'
@@ -19,9 +20,9 @@ export default function App() {
           <Route element={<AppShell />}>
             {/* The shell shows the first-year step on "/" while no year exists; this redirect renders only once one does. */}
             <Route index element={<Navigate to="/societe" replace />} />
-            {/* Stubs until the screens of tasks 10 to 13 replace them. */}
             <Route path="ventes/*" element={<SalesScreen />} />
-            <Route path="achats/*" element={<UnderConstruction />} />
+            <Route path="achats/*" element={<PurchasesScreen />} />
+            {/* Stubs until the screens of tasks 11 to 13 replace them. */}
             <Route path="immobilisations/*" element={<UnderConstruction />} />
             <Route path="journaux/*" element={<UnderConstruction />} />
             <Route path="tva/*" element={<UnderConstruction />} />
