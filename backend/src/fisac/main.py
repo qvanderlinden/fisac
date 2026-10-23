@@ -16,6 +16,7 @@ from fisac.routers import (
     partners,
     payment_methods,
     purchases,
+    result,
     sales,
     third_parties,
     vat_periods,
@@ -42,6 +43,7 @@ app.include_router(purchases.router, prefix="/api")
 app.include_router(fixed_assets.router, prefix="/api")
 app.include_router(journals.router, prefix="/api")
 app.include_router(vat_periods.router, prefix="/api")
+app.include_router(result.router, prefix="/api")
 
 # Only present inside the built container image (see Dockerfile).
 # Guarded so local `uvicorn --reload` (no frontend build present) still starts.
