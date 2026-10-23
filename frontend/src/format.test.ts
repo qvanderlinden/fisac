@@ -9,6 +9,7 @@ import {
   MAX_AMOUNT,
   parseDecimal,
   parseRate,
+  parseRequiredRate,
   parseVatRate,
   pluralNoun,
   rateInput,
@@ -178,6 +179,25 @@ describe('parseVatRate', () => {
     expect(parseVatRate('21x')).toBeNull()
     expect(parseVatRate('-1')).toBeNull()
     expect(parseVatRate('101')).toBeNull()
+  })
+})
+
+describe('parseRequiredRate', () => {
+  it('reads a typed rate, French comma included', () => {
+    expect(parseRequiredRate('21')).toBe('21')
+    expect(parseRequiredRate('5,5')).toBe('5.5')
+    expect(parseRequiredRate('0')).toBe('0')
+  })
+
+  it('has no reading for a blank field', () => {
+    expect(parseRequiredRate('')).toBeNull()
+    expect(parseRequiredRate('  ')).toBeNull()
+  })
+
+  it('rejects a third decimal, text and anything outside 0-100', () => {
+    expect(parseRequiredRate('5,125')).toBeNull()
+    expect(parseRequiredRate('x')).toBeNull()
+    expect(parseRequiredRate('101')).toBeNull()
   })
 })
 

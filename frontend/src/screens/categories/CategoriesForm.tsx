@@ -7,7 +7,7 @@ import { useAutosave } from '../../hooks/useAutosave'
 import type { SaveResult } from '../../lists/useEditSession'
 import { isTaxed } from './categoriesList'
 import { KINDS, ROLE_SCREENS, kindTone } from './kinds'
-import { usesLabel } from '../tiers/tiersList'
+import { usesLabel } from '../../lists/inUse'
 
 /** The values the form edits: the name as typed, the kind, the two defaults (null for none) and the archive flag. */
 export interface CategoryFields {

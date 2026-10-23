@@ -1,4 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { IsocSchemesScreen } from './screens/isoc-schemes/IsocSchemesScreen'
+import { VatSchemesScreen } from './screens/vat-schemes/VatSchemesScreen'
 import { Placeholder } from './screens/Placeholder'
 import { CategoriesScreen } from './screens/categories/CategoriesScreen'
 import { TiersScreen } from './screens/tiers/TiersScreen'
@@ -16,8 +18,8 @@ export default function App() {
             <Route path="societe" element={<Placeholder title="Structure société" />} />
             <Route path="tiers" element={<TiersScreen />} />
             <Route path="categories" element={<CategoriesScreen />} />
-            <Route path="regimes-tva" element={<Placeholder title="Régimes de TVA" />} />
-            <Route path="regimes-isoc" element={<Placeholder title="Régimes ISOC" />} />
+            <Route path="regimes-tva" element={<VatSchemesScreen />} />
+            <Route path="regimes-isoc" element={<IsocSchemesScreen />} />
             <Route path="modeles-amortissement" element={<Placeholder title="Modèles d’amortissement" />} />
             <Route path="moyens-paiement" element={<Placeholder title="Moyens de paiement" />} />
             <Route path="*" element={<Navigate to="/societe" replace />} />

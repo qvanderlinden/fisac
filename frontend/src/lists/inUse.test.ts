@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Trash2 } from 'lucide-react'
-import { deleteItem, inUseLabel } from './inUse'
+import { deleteItem, inUseLabel, usesLabel } from './inUse'
+
+describe('usesLabel', () => {
+  it('is a dash when nothing carries the row', () => {
+    expect(usesLabel(0)).toBe('—')
+  })
+
+  it('counts the pieces, French plural from 2', () => {
+    expect(usesLabel(1)).toBe('1 pièce')
+    expect(usesLabel(12)).toBe('12 pièces')
+  })
+})
 
 describe('inUseLabel', () => {
   it('says "pièce" for one', () => {

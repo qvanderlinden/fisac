@@ -1,5 +1,4 @@
 import type { ThirdPartyRead } from '../../api/types'
-import { countLabel } from '../../format'
 import { checkIban, type IbanState } from '../../iban'
 
 // What the table and the cards share: the IBAN filter, the search, the sort
@@ -47,11 +46,6 @@ export const FIRST_DIR: Record<TiersSortKey, 'asc' | 'desc'> = { name: 'asc', ib
 
 export function displayName(t: { name: string } | undefined): string {
   return t?.name || 'Tiers sans nom'
-}
-
-/** "12 pièces", or a dash when no piece carries the tiers. */
-export function usesLabel(uses: number): string {
-  return uses ? countLabel(uses, 'pièce', 'pièces') : '—'
 }
 
 /** The badge beside a row's IBAN; none for a valid one. */

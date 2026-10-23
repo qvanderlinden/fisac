@@ -7,7 +7,8 @@ import { countLabel } from '../../format'
 import { groupIban } from '../../iban'
 import { BulkBar, type BulkAction } from '../../lists/BulkBar'
 import { Pager } from '../../lists/Pager'
-import { RowMenu, deleteItem, inUseLabel } from '../../lists/RowMenu'
+import { deleteItem, inUseLabel, usesLabel } from '../../lists/inUse'
+import { RowMenu } from '../../lists/RowMenu'
 import { SortHeader } from '../../lists/SortHeader'
 import { listView, type SortDir } from '../../lists/listView'
 import { useSelection } from '../../lists/useSelection'
@@ -19,7 +20,6 @@ import {
   filterByIban,
   ibanBadge,
   matchesTiers,
-  usesLabel,
   type IbanFilter,
   type TiersSortKey,
 } from './tiersList'

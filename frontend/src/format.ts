@@ -153,6 +153,11 @@ export function parseRate(text: string, blank: string): string | null {
   return rate === null || Number(rate) < 0 || Number(rate) > 100 ? null : rate
 }
 
+/** A required percentage as typed: null when blank, unreadable or out of 0-100. */
+export function parseRequiredRate(text: string): string | null {
+  return text.trim() === '' ? null : parseRate(text, '0')
+}
+
 /** A VAT rate as typed, blank for 0. */
 export function parseVatRate(text: string): string | null {
   return parseRate(text, '0')

@@ -6,7 +6,7 @@ import { countLabel } from '../../format'
 import { useAutosave } from '../../hooks/useAutosave'
 import { checkIban, groupIban, normalizeIban } from '../../iban'
 import type { SaveResult } from '../../lists/useEditSession'
-import { usesLabel } from './tiersList'
+import { usesLabel } from '../../lists/inUse'
 
 /** The values the form edits: the name as typed, the IBAN normalised (null for none). */
 export interface TiersFields {

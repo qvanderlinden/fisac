@@ -4,7 +4,7 @@ import { Badge, Button, Checkbox, EmptyState, Input, Segment } from '@qvanderlin
 import type { CategoryRead } from '../../api/types'
 import { countLabel } from '../../format'
 import { listView } from '../../lists/listView'
-import { usesLabel } from '../tiers/tiersList'
+import { usesLabel } from '../../lists/inUse'
 import {
   KIND_TABS,
   LEGEND_KINDS,

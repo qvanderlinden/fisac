@@ -1,4 +1,5 @@
 import { Trash2, type LucideIcon } from 'lucide-react'
+import { countLabel } from '../format'
 
 export interface RowMenuAction {
   label: string
@@ -9,6 +10,11 @@ export interface RowMenuAction {
 }
 
 export type RowMenuItem = RowMenuAction | 'separator'
+
+/** "12 pièces", or a dash when no piece carries the row. */
+export function usesLabel(uses: number): string {
+  return uses ? countLabel(uses, 'pièce', 'pièces') : '—'
+}
 
 /** What replaces delete on a row that pieces carry: "Porté par 3 pièces : impossible de le supprimer". */
 export function inUseLabel(uses: number): string {

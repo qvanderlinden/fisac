@@ -10,7 +10,7 @@ import { RowMenu, type RowMenuAction } from '../../lists/RowMenu'
 import { SortHeader } from '../../lists/SortHeader'
 import { listView, type SortDir } from '../../lists/listView'
 import { useSelection } from '../../lists/useSelection'
-import { usesLabel } from '../tiers/tiersList'
+import { usesLabel } from '../../lists/inUse'
 import {
   FIRST_DIR,
   KIND_TABS,

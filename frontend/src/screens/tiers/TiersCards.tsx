@@ -4,6 +4,7 @@ import { Badge, Button, EmptyState, Input, Select } from '@qvanderlinden/ui'
 import type { ThirdPartyRead } from '../../api/types'
 import { countLabel, formatNumber } from '../../format'
 import { groupIban } from '../../iban'
+import { usesLabel } from '../../lists/inUse'
 import { listView, type SortDir } from '../../lists/listView'
 import {
   IBAN_FILTERS,
@@ -13,7 +14,6 @@ import {
   ibanBadge,
   ibanStateOf,
   matchesTiers,
-  usesLabel,
   type IbanFilter,
   type TiersSortKey,
 } from './tiersList'
