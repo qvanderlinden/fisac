@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from fisac.errors import ApiError, api_error_handler
 from fisac.routers import (
+    categories,
     company,
     depreciation_models,
     financial_accounts,
@@ -30,6 +31,7 @@ app.include_router(third_parties.router, prefix="/api")
 app.include_router(vat_schemes.router, prefix="/api")
 app.include_router(isoc_schemes.router, prefix="/api")
 app.include_router(depreciation_models.router, prefix="/api")
+app.include_router(categories.router, prefix="/api")
 
 # Only present inside the built container image (see Dockerfile).
 # Guarded so local `uvicorn --reload` (no frontend build present) still starts.
