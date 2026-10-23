@@ -30,25 +30,25 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'mouvements',
     items: [
-      { path: null, label: 'ventes', icon: ArrowDownLeft },
-      { path: null, label: 'achats', icon: Receipt },
+      { path: '/ventes', label: 'ventes', icon: ArrowDownLeft },
+      { path: '/achats', label: 'achats', icon: Receipt },
       { path: null, label: 'divers', icon: ArrowLeftRight },
-      { path: null, label: 'immobilisations', icon: Package },
-      { path: null, label: 'journaux', icon: BookOpen },
+      { path: '/immobilisations', label: 'immobilisations', icon: Package },
+      { path: '/journaux', label: 'journaux', icon: BookOpen },
     ],
   },
   { group: 'dirigeant', items: [{ path: null, label: 'rémunération', icon: Banknote }] },
   {
     group: 'taxes',
     items: [
-      { path: null, label: 'tva', icon: Percent },
+      { path: '/tva', label: 'tva', icon: Percent },
       { path: null, label: 'isoc', icon: Landmark },
     ],
   },
   {
     group: 'clôture',
     items: [
-      { path: null, label: 'résultat', icon: TrendingUp },
+      { path: '/resultat', label: 'résultat', icon: TrendingUp },
       { path: null, label: 'inventaire', icon: ClipboardList },
     ],
   },

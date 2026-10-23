@@ -10,16 +10,11 @@ export type DepreciationMethod = 'linear' | 'declining'
 export type DepreciationFirstYear = 'prorata' | 'full'
 export type FinancialAccountKind = 'bank' | 'card' | 'cash'
 export type PaymentMethodType = 'transfer' | 'direct_debit' | 'card' | 'cash'
-export type CategoryKind = 'revenue' | 'expense' | 'tax' | 'fixed_asset' | 'outside'
-export type CategoryRole =
-  | 'sales'
-  | 'net_salary'
-  | 'social_contributions'
-  | 'withholding_tax'
-  | 'corporate_tax'
-  | 'card_statement'
-  | 'fixed_asset'
-export type CategorySettlement = 'vat_return' | 'opening_inventory' | 'director_current_account'
+export type CategoryDirection = 'sales' | 'purchases'
+export type PieceKind = 'invoice' | 'credit_note'
+export type PieceStatus = 'paid' | 'planned' | 'late'
+export type FixedAssetStatus = 'in_service' | 'depreciated'
+export type VatPeriodStatus = 'current' | 'to_file' | 'filed'
 
 export interface CompanyRead {
   name: string
@@ -119,13 +114,191 @@ export interface PaymentMethodRead {
 export interface CategoryRead {
   id: number
   label: string
-  kind: CategoryKind
-  role: CategoryRole | null
-  settlement: CategorySettlement | null
-  default_vat_scheme_id: number | null
-  default_isoc_scheme_id: number | null
+  direction: CategoryDirection
   archived: boolean
   uses: number
+}
+
+export interface LineRead {
+  id: number
+  description: string
+  unit_price: string
+  quantity: string
+  category_id: number
+  vat_scheme_id: number
+  net: string
+  vat: string
+}
+
+export interface PurchaseLineRead extends LineRead {
+  recovered: string
+  charge: string
+  /** The register entry that takes the line over, when there is one. */
+  fixed_asset_id: number | null
+  fixed_asset_number: number | null
+}
+
+/** Piece reads are unsigned (as typed): `kind` carries the sign. */
+export interface PieceRead {
+  id: number
+  fiscal_year_id: number
+  number: number
+  kind: PieceKind
+  third_party_id: number | null
+  third_party_name: string | null
+  description: string
+  document_date: string
+  /** The effective booking date (the document date unless one was set). */
+  booking_date: string
+  payment_method_id: number
+  payment_date: string
+  paid: boolean
+  status: PieceStatus
+  net: string
+  vat: string
+  total: string
+}
+
+export interface SaleRead extends PieceRead {
+  lines: LineRead[]
+}
+
+export interface PurchaseRead extends PieceRead {
+  recovered: string
+  charge: string
+  lines: PurchaseLineRead[]
+}
+
+export interface AvailableLine {
+  id: number
+  purchase_id: number
+  purchase_number: number
+  fiscal_year: number
+  third_party_name: string | null
+  description: string
+  net: string
+  charge: string
+  booking_date: string
+}
+
+export interface ScheduleRow {
+  year: number
+  amount: string
+  edited: boolean
+}
+
+interface FixedAssetBase {
+  id: number
+  number: number
+  description: string
+  purchase_line_id: number
+  purchase_id: number
+  purchase_number: number
+  depreciation_model_id: number
+  value: string
+  acquired_on: string
+}
+
+export interface FixedAssetRead extends FixedAssetBase {
+  schedule: ScheduleRow[]
+}
+
+export interface RegisterRow extends FixedAssetBase {
+  depreciated_before: string
+  depreciation: string
+  remaining: string
+  status: FixedAssetStatus
+  schedule_balanced: boolean
+}
+
+export interface MovementRead {
+  date: string
+  kind: 'sale' | 'purchase' | 'card_statement'
+  piece_id: number | null
+  reference: string
+  label: string
+  amount: string
+  balance: string
+  planned: boolean
+}
+
+export interface JournalRead {
+  account: FinancialAccountRead
+  opening: string
+  receipts: string
+  payments: string
+  closing: string
+  movements: MovementRead[]
+}
+
+export interface VatPieceRead {
+  kind: 'sale' | 'purchase'
+  piece_id: number
+  number: string
+  date: string
+  third_party: string | null
+  net: string
+  vat: string
+  recovered: string
+}
+
+export interface VatPeriodRead {
+  id: number
+  start: string
+  end: string
+  due: string
+  filed_on: string | null
+  status: VatPeriodStatus
+  sales_net: string
+  sales_vat: string
+  purchases_net: string
+  purchases_vat_recovered: string
+  balance: string
+  pieces: VatPieceRead[]
+}
+
+export interface VatPeriodsRead {
+  regime: VatRegime
+  periods: VatPeriodRead[]
+}
+
+export interface ResultPieceRead {
+  piece_id: number
+  reference: string
+  date: string
+  third_party: string | null
+  amount: string
+}
+
+export interface ResultCategoryRead {
+  category_id: number
+  label: string
+  total: string
+  pieces: ResultPieceRead[]
+}
+
+export interface ResultGroupRead {
+  total: string
+  by_category: ResultCategoryRead[]
+}
+
+export interface ResultAssetRead {
+  asset_id: number
+  reference: string
+  description: string
+  amount: string
+}
+
+export interface ResultDepreciationRead {
+  total: string
+  by_asset: ResultAssetRead[]
+}
+
+export interface ResultRead {
+  revenue: ResultGroupRead
+  charges: ResultGroupRead
+  depreciation: ResultDepreciationRead
+  result: string
 }
 
 /** What `api/client.ts` throws for a non-2xx response. `message` is the

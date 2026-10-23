@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Callout, toast } from '@qvanderlinden/ui'
 import { api } from '../../api/client'
-import type { CategoryRead, IsocSchemeRead, VatSchemeRead } from '../../api/types'
+import type { CategoryDirection, CategoryRead } from '../../api/types'
 import { messageOf } from '../../errors'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useResource } from '../../hooks/useResource'
@@ -12,79 +12,59 @@ import { useEditSession, type EditRules } from '../../lists/useEditSession'
 import { CategoriesCards } from './CategoriesCards'
 import { CategoriesForm, type CategoryFields } from './CategoriesForm'
 import { CategoriesTable } from './CategoriesTable'
-import { deletable, displayName, schemeLabels } from './categoriesList'
-import { KINDS } from './kinds'
+import { DIRECTION_TABS, deletable, displayName } from './categoriesList'
 
-/** The API names of the form's fields. */
+/** The API names of the form's fields; the direction is only sent when a category is created. */
 function bodyOf(patch: Partial<CategoryFields>): Record<string, unknown> {
   const body: Record<string, unknown> = {}
   if (patch.label !== undefined) body.label = patch.label.trim()
-  if (patch.kind !== undefined) {
-    body.kind = patch.kind
-    // A settlement only fits an outside category.
-    if (patch.kind !== 'outside') body.settlement = null
-  }
-  if (patch.defaultVat !== undefined) body.default_vat_scheme_id = patch.defaultVat
-  if (patch.defaultIsoc !== undefined) body.default_isoc_scheme_id = patch.defaultIsoc
   if (patch.archived !== undefined) body.archived = patch.archived
   return body
 }
 
 /**
- * A category in the form. The API needs a name and a kind: a new category is POSTed with
- * the first name typed (kind "dépense" unless another was picked before), a blank name is
- * never sent (the form says so), and a new category whose name is erased again is deleted
- * when the form closes.
+ * A category in the form. The API needs a name and a direction: a new category is POSTed
+ * with the first name typed, in the direction of the tab it was opened from; a blank name
+ * is never sent (the form says so), and a new category whose name is erased again is
+ * deleted when the form closes.
  */
-const RULES: EditRules<CategoryRead, CategoryFields> = {
-  fields: (row) => ({
-    label: row?.label ?? '',
-    kind: row?.kind ?? 'expense',
-    defaultVat: row?.default_vat_scheme_id ?? null,
-    defaultIsoc: row?.default_isoc_scheme_id ?? null,
-    archived: row?.archived ?? false,
-  }),
-  patchBody: (patch) => (patch.label !== undefined && patch.label.trim() === '' ? null : bodyOf(patch)),
-  createBody: (local) =>
-    local.label.trim()
-      ? {
-          label: local.label.trim(),
-          kind: local.kind,
-          default_vat_scheme_id: local.defaultVat,
-          default_isoc_scheme_id: local.defaultIsoc,
-        }
-      : null,
-  discard: (local) => local.label.trim() === '',
+function rulesFor(direction: CategoryDirection): EditRules<CategoryRead, CategoryFields> {
+  return {
+    fields: (row) => ({
+      label: row?.label ?? '',
+      direction: row?.direction ?? direction,
+      archived: row?.archived ?? false,
+    }),
+    patchBody: (patch) => (patch.label !== undefined && patch.label.trim() === '' ? null : bodyOf(patch)),
+    createBody: (local) => (local.label.trim() ? { label: local.label.trim(), direction: local.direction } : null),
+    discard: (local) => local.label.trim() === '',
+  }
 }
 
 /**
- * The Catégories screen: loads the categories and the two scheme lists, shows the table
+ * The Catégories screen: loads the categories, shows the ventes / achats tabs and the table
  * (desktop) or the cards (mobile), and owns the edit form, its saves (`useEditSession`),
  * the archiving and the deletions.
  */
 export function CategoriesScreen() {
   const mobile = useMediaQuery('(max-width: 640px)')
   const { data, error, setData } = useResource<CategoryRead[]>('/categories')
-  const vat = useResource<VatSchemeRead[]>('/vat-schemes')
-  const isoc = useResource<IsocSchemeRead[]>('/isoc-schemes')
-  const { editing, open, close, remove, create } = useEditSession('/categories', setData, RULES)
+  const [tab, setTab] = useState<CategoryDirection>('sales')
+  const { editing, open, close, remove, create } = useEditSession('/categories', setData, rulesFor(tab))
   const [deleting, setDeleting] = useState<number[] | null>(null)
 
-  const failed = error ?? vat.error ?? isoc.error
-  if (failed) {
+  if (error) {
     return (
       <Callout tone="negative" title="Les catégories n’ont pas pu être chargées.">
-        {messageOf(failed)}
+        {messageOf(error)}
       </Callout>
     )
   }
-  if (!data || !vat.data || !isoc.data) return <p className="type-body-sm text-fg-muted">Chargement…</p>
+  if (!data) return <p className="type-body-sm text-fg-muted">Chargement…</p>
 
-  const labels = schemeLabels(vat.data, isoc.data)
-
-  /** Archives or restores categories outside the form; one a screen books into is skipped. */
+  /** Archives or restores categories outside the form. */
   async function archive(ids: number[], archived: boolean) {
-    const rows = (data ?? []).filter((c) => ids.includes(c.id) && c.role === null && c.archived !== archived)
+    const rows = (data ?? []).filter((c) => ids.includes(c.id) && c.archived !== archived)
     const results = await Promise.allSettled(
       rows.map((c) => api.patch<CategoryRead>(`/categories/${c.id}`, { archived })),
     )
@@ -117,7 +97,7 @@ export function CategoriesScreen() {
         title: one ? `Supprimer « ${doomed[0].label || 'la catégorie'} » ?` : `Supprimer ${doomed.length} catégories ?`,
         description: one ? 'Aucune pièce ne la porte. C’est définitif.' : 'Aucune pièce ne les porte. C’est définitif.',
         // The mobile form confirms under its own fields, without the list.
-        rows: mobile ? [] : doomed.map((c) => ({ label: displayName(c), detail: KINDS[c.kind].label })),
+        rows: mobile ? [] : doomed.map((c) => ({ label: displayName(c), detail: DIRECTION_TABS.find((t) => t.value === c.direction)?.label })),
         action: mobile ? 'Supprimer' : one ? 'Supprimer la catégorie' : `Supprimer ${doomed.length} catégories`,
         onConfirm: () => {
           setDeleting(null)
@@ -133,10 +113,9 @@ export function CategoriesScreen() {
     <CategoriesForm
       key={editing.key}
       row={row}
+      direction={tab}
       isNew={editing.isNew}
       mobile={mobile}
-      vatSchemes={vat.data}
-      isocSchemes={isoc.data}
       onSave={editing.save}
     />
   ) : null
@@ -144,7 +123,7 @@ export function CategoriesScreen() {
   if (mobile) {
     return (
       <>
-        <CategoriesCards rows={data} labels={labels} onAdd={() => openRow(null)} onOpen={openId} />
+        <CategoriesCards rows={data} tab={tab} onTab={setTab} onAdd={() => openRow(null)} onOpen={openId} />
         {editing ? (
           <FullScreenForm title={title} onClose={close} remove={removeAction} confirm={deleteConfirm}>
             {form}
@@ -158,16 +137,14 @@ export function CategoriesScreen() {
     <>
       <CategoriesTable
         rows={data}
-        labels={labels}
+        tab={tab}
+        onTab={setTab}
         onAdd={() => openRow(null)}
         onOpen={openId}
         onDuplicate={(c) =>
           void create({
             label: `${c.label} (copie)`.slice(0, 120),
-            kind: c.kind,
-            settlement: c.settlement,
-            default_vat_scheme_id: c.default_vat_scheme_id,
-            default_isoc_scheme_id: c.default_isoc_scheme_id,
+            direction: c.direction,
           })
         }
         onArchive={(ids, archived) => void archive(ids, archived)}

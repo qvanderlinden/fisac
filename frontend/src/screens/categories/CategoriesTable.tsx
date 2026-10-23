@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Archive, ArchiveRestore, Copy, FileText, Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Copy, Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react'
 import { Badge, Button, Card, Checkbox, EmptyState, IconButton, Input, Tabs } from '@qvanderlinden/ui'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
-import type { CategoryRead } from '../../api/types'
+import type { CategoryDirection, CategoryRead } from '../../api/types'
 import { countLabel } from '../../format'
 import { BulkBar, type BulkAction } from '../../lists/BulkBar'
 import { Pager } from '../../lists/Pager'
@@ -12,37 +12,30 @@ import { listView, type SortDir } from '../../lists/listView'
 import { useSelection } from '../../lists/useSelection'
 import { usesLabel } from '../../lists/inUse'
 import {
+  CATEGORY_COMPARE,
+  DIRECTION_TABS,
   FIRST_DIR,
-  KIND_TABS,
-  LEGEND_KINDS,
-  categoryCompare,
   deletable,
   displayName,
-  isocCell,
   matchesCategory,
   selectionNote,
   tabCount,
-  vatCell,
   visible,
   type CategorySortKey,
-  type KindTab,
-  type SchemeLabels,
 } from './categoriesList'
-import { KINDS, ROLE_SCREENS, kindTone } from './kinds'
 
 /** What a row's delete button and menu item say when the category cannot be deleted. */
-function keptLabel(c: CategoryRead): string {
-  return c.role ? `Utilisée par l’écran ${ROLE_SCREENS[c.role]}` : 'Utilisée : elle ne peut qu’être archivée'
-}
+const KEPT_LABEL = 'Utilisée : elle ne peut qu’être archivée'
 
 /**
- * The desktop list (`Categories` artboard): title and "Nouvelle catégorie", kind tabs with
+ * The desktop list (`Categories` artboard): title and "Nouvelle catégorie", direction tabs (ventes / achats) with
  * counts, search and "Montrer les archivées", sortable columns, selection with the bulk bar,
- * row actions, pages of 25 and the legend of the kinds.
+ * row actions and pages of 25.
  */
 export function CategoriesTable({
   rows,
-  labels,
+  tab,
+  onTab,
   onAdd,
   onOpen,
   onDuplicate,
@@ -50,7 +43,9 @@ export function CategoriesTable({
   onDelete,
 }: {
   rows: CategoryRead[]
-  labels: SchemeLabels
+  /** The active tab: a new category is created in its direction. */
+  tab: CategoryDirection
+  onTab(tab: CategoryDirection): void
   onAdd(): void
   onOpen(id: number): void
   onDuplicate(row: CategoryRead): void
@@ -59,7 +54,6 @@ export function CategoriesTable({
   /** Asks to delete these unused categories; the screen confirms first. */
   onDelete(ids: number[]): void
 }) {
-  const [tab, setTab] = useState<KindTab>('all')
   const [query, setQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [sort, setSort] = useState<{ key: CategorySortKey; dir: SortDir }>({ key: 'label', dir: 'asc' })
@@ -70,7 +64,7 @@ export function CategoriesTable({
     query,
     matches: matchesCategory,
     sort,
-    compare: categoryCompare(labels),
+    compare: CATEGORY_COMPARE,
     page,
   })
   const pageIds = view.rows.map((c) => c.id)
@@ -79,8 +73,8 @@ export function CategoriesTable({
   // Ticked ids of deleted rows are left in the set: they match no row, so nothing counts them.
   const picked = rows.filter((c) => selection.selected.has(c.id))
   const free = picked.filter(deletable)
-  const toArchive = picked.filter((c) => c.role === null && !c.archived)
-  const toRestore = picked.filter((c) => c.role === null && c.archived)
+  const toArchive = picked.filter((c) => !c.archived)
+  const toRestore = picked.filter((c) => c.archived)
 
   const head = (key: CategorySortKey, label: string, className?: string) => (
     <SortHeader
@@ -118,15 +112,13 @@ export function CategoriesTable({
     {
       label: c.archived ? 'Désarchiver' : 'Archiver',
       icon: c.archived ? ArchiveRestore : Archive,
-      disabled: c.role !== null,
       run: () => onArchive([c.id], !c.archived),
     },
     { label: 'Dupliquer', icon: Copy, run: () => onDuplicate(c) },
-    { label: 'Voir les pièces', icon: FileText, disabled: true, run: () => {} },
     'separator',
     deletable(c)
       ? { label: 'Supprimer la catégorie', icon: Trash2, danger: true, run: () => onDelete([c.id]) }
-      : { label: keptLabel(c), icon: Trash2, disabled: true, run: () => {} },
+      : { label: KEPT_LABEL, icon: Trash2, disabled: true, run: () => {} },
   ]
 
   return (
@@ -135,8 +127,7 @@ export function CategoriesTable({
         <div className="flex flex-col gap-2">
           <h1 className="type-title text-4xl text-fg-strong">Catégories</h1>
           <span className="text-sm text-fg-muted">
-            Elles remplacent le plan comptable : chaque pièce et chaque mouvement en porte une, qui dit où il va dans le
-            résultat
+            Chaque ligne de vente ou d’achat en porte une : elle dit où elle va dans le résultat
           </span>
         </div>
         <Button iconLeft={Plus} onClick={onAdd}>
@@ -146,10 +137,10 @@ export function CategoriesTable({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Tabs
-          tabs={KIND_TABS.map((t) => ({ value: t.value, label: t.label, count: tabCount(rows, t.value) }))}
+          tabs={DIRECTION_TABS.map((t) => ({ value: t.value, label: t.label, count: tabCount(rows, t.value) }))}
           value={tab}
           onChange={(value) => {
-            setTab(value as KindTab)
+            onTab(value as CategoryDirection)
             setPage(1)
           }}
         />
@@ -186,7 +177,7 @@ export function CategoriesTable({
             onClear={selection.clear}
           />
         ) : null}
-        <Table className="min-w-230">
+        <Table className="min-w-150">
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
@@ -197,9 +188,6 @@ export function CategoriesTable({
                 />
               </TableHead>
               {head('label', 'Catégorie')}
-              {head('kind', 'Type', 'w-38')}
-              {head('vat', 'TVA par défaut', 'w-48')}
-              {head('isoc', 'ISOC par défaut', 'w-43')}
               {head('uses', 'Utilisée', 'w-28 text-right')}
               <TableHead className="w-28">
                 <span className="sr-only">Actions</span>
@@ -210,8 +198,6 @@ export function CategoriesTable({
             {view.rows.map((c) => {
               const name = displayName(c)
               const selected = selection.selected.has(c.id)
-              const vat = vatCell(c, labels)
-              const isoc = isocCell(c, labels)
               return (
                 <TableRow
                   key={c.id}
@@ -234,17 +220,9 @@ export function CategoriesTable({
                       >
                         {name}
                       </button>
-                      {c.role ? <Badge tone="neutral">{ROLE_SCREENS[c.role]}</Badge> : null}
                       {c.archived ? <Badge tone="neutral">archivée</Badge> : null}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge tone={kindTone(c.kind)}>{KINDS[c.kind].label}</Badge>
-                  </TableCell>
-                  <TableCell className={vat === '—' || vat === 'hors TVA' ? 'text-sm text-fg-muted' : 'text-sm'}>
-                    {vat}
-                  </TableCell>
-                  <TableCell className={isoc === '—' ? 'text-sm text-fg-muted' : 'text-sm'}>{isoc}</TableCell>
                   <TableCell className="numeric text-right text-fg-muted">{usesLabel(c.uses)}</TableCell>
                   <TableCell className="pr-2 pl-0">
                     <div className="flex justify-end gap-0.5">
@@ -260,8 +238,7 @@ export function CategoriesTable({
                         <IconButton
                           icon={c.archived ? ArchiveRestore : Archive}
                           size="sm"
-                          label={c.role ? keptLabel(c) : c.archived ? `Désarchiver ${name}` : `Utilisée : archiver ${name}`}
-                          disabled={c.role !== null}
+                          label={c.archived ? `Désarchiver ${name}` : `Utilisée : archiver ${name}`}
                           onClick={() => onArchive([c.id], !c.archived)}
                         />
                       )}
@@ -282,17 +259,6 @@ export function CategoriesTable({
           onNext={() => setPage(view.page + 1)}
         />
       </Card>
-
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
-        {LEGEND_KINDS.map((k) => (
-          <div key={k} className="flex flex-col gap-1.5 rounded-lg border border-line-hairline bg-surface-card px-5 py-4">
-            <div>
-              <Badge tone={kindTone(k)}>{KINDS[k].label}</Badge>
-            </div>
-            <span className="text-sm text-fg-muted">{KINDS[k].hint}</span>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
