@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fisac import pieces
+from fisac import pieces, register
 from fisac.books.amounts import line_amounts
 from fisac.db import get_session
+from fisac.errors import commit, field_error, in_use
 from fisac.models import (
     FiscalYear,
     FixedAsset,
@@ -26,6 +27,29 @@ from fisac.schemas.purchases import (
 router = APIRouter(tags=["purchases"])
 
 _SPEC = pieces.PURCHASES
+
+
+async def _assets(session: AsyncSession, *where) -> list[FixedAsset]:
+    """The fixed assets taking over the purchase lines matching `where`."""
+    query = (
+        select(FixedAsset)
+        .join(PurchaseLine, PurchaseLine.id == FixedAsset.purchase_line_id)
+        .where(*where)
+        .order_by(FixedAsset.number)
+    )
+    return list(await session.scalars(query))
+
+
+def _held(assets: list[FixedAsset]):
+    first = assets[0]
+    return in_use(len(assets), f"Reprise par l'immobilisation {pieces.reference('I', first.number, 3)}")
+
+
+async def _refresh(session: AsyncSession, assets: list[FixedAsset]) -> None:
+    for asset in assets:
+        await register.refresh_schedule(session, asset)
+    if assets:
+        await commit(session)
 
 
 @router.get("/fiscal-years/{year_id}/purchases", response_model=list[PurchaseRead])
@@ -98,11 +122,21 @@ async def read_purchase(purchase_id: int, session: AsyncSession = Depends(get_se
 async def update_purchase(
     purchase_id: int, body: PurchaseUpdate, session: AsyncSession = Depends(get_session)
 ):
-    return await pieces.update_piece(session, _SPEC, purchase_id, body)
+    assets = await _assets(session, PurchaseLine.purchase_id == purchase_id)
+    if assets and body.kind == PieceKind.CREDIT_NOTE:
+        raise field_error("kind", "Une ligne de cet achat est au registre")
+    read = await pieces.update_piece(session, _SPEC, purchase_id, body)
+    if "document_date" in body.model_fields_set or "booking_date" in body.model_fields_set:
+        await _refresh(session, assets)
+        read = await pieces.read_piece(session, _SPEC, purchase_id)
+    return read
 
 
 @router.delete("/purchases/{purchase_id}", status_code=204)
 async def delete_purchase(purchase_id: int, session: AsyncSession = Depends(get_session)):
+    held = await _assets(session, PurchaseLine.purchase_id == purchase_id)
+    if held:
+        raise _held(held)
     await pieces.delete_piece(session, _SPEC, purchase_id)
     return Response(status_code=204)
 
@@ -118,9 +152,16 @@ async def add_line(
 async def update_line(
     line_id: int, body: PurchaseLineUpdate, session: AsyncSession = Depends(get_session)
 ):
-    return await pieces.update_line(session, _SPEC, line_id, body)
+    read = await pieces.update_line(session, _SPEC, line_id, body)
+    if body.model_fields_set & {"unit_price", "quantity", "vat_scheme_id"}:
+        await _refresh(session, await _assets(session, PurchaseLine.id == line_id))
+        read = await pieces.read_piece(session, _SPEC, read["id"])
+    return read
 
 
 @router.delete("/purchase-lines/{line_id}", response_model=PurchaseRead)
 async def delete_line(line_id: int, session: AsyncSession = Depends(get_session)):
+    held = await _assets(session, PurchaseLine.id == line_id)
+    if held:
+        raise _held(held)
     return await pieces.delete_line(session, _SPEC, line_id)

@@ -13,6 +13,7 @@ CONSTRAINT_MESSAGES: dict[str, tuple[str, str]] = {
     "uq_isoc_schemes_label": ("label", "Ce libellé existe déjà"),
     "uq_depreciation_models_label": ("label", "Ce libellé existe déjà"),
     "uq_categories_label": ("label", "Ce libellé existe déjà"),
+    "uq_fixed_assets_purchase_line": ("purchase_line_id", "Cette ligne est déjà au registre"),
     "ck_vat_schemes_rate_range": ("rate", "Un taux de 0 à 100 %"),
     "ck_vat_schemes_recoverable_rate_range": ("recoverable_rate", "Un taux de 0 à 100 %"),
     "ck_vat_schemes_some_side": ("for_sales", "Proposé sur les ventes, les achats ou les deux"),
