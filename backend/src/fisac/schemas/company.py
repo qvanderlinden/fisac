@@ -2,15 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from fisac import iban
+from fisac.iban import checked as checked_iban
 from fisac.models import LegalForm, VatRegime
-
-
-def _checked_iban(value: str | None) -> str | None:
-    value = iban.normalize(value)
-    if value is not None and (message := iban.problem(value)):
-        raise ValueError(message)
-    return value
 
 
 class CompanyRead(BaseModel):
@@ -42,4 +35,4 @@ class CompanyUpdate(BaseModel):
     manager_since: date | None = None
     manager_paid: bool | None = None
 
-    _iban = field_validator("iban")(staticmethod(_checked_iban))
+    _iban = field_validator("iban")(staticmethod(checked_iban))

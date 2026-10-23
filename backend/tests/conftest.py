@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import date
 from pathlib import Path
 
 # Before any fisac import: the engine reads DATABASE_URL at import time.
@@ -20,6 +21,7 @@ import fisac.models  # noqa: E402, F401
 from fisac import db  # noqa: E402
 from fisac.db import Base  # noqa: E402
 from fisac.main import app  # noqa: E402
+from fisac.models import FiscalYear, Purchase, PurchaseLine, Sale  # noqa: E402
 
 BACKEND = Path(__file__).resolve().parents[1]
 SEEDED = (
@@ -101,3 +103,61 @@ async def client():
 async def session():
     async with db.async_session() as s:
         yield s
+
+
+async def _fiscal_year(session, year: int = 2026) -> FiscalYear:
+    fiscal_year = await session.scalar(
+        select(FiscalYear).where(FiscalYear.start_date == date(year, 1, 1))
+    )
+    if fiscal_year is None:
+        fiscal_year = FiscalYear(start_date=date(year, 1, 1), end_date=date(year, 12, 31))
+        session.add(fiscal_year)
+        await session.flush()
+    return fiscal_year
+
+
+async def add_sale(session, **kw) -> Sale:
+    """A sale (fiscal year 2026 created when missing); `kw` overrides its columns."""
+    fiscal_year = await _fiscal_year(session)
+    values = {
+        "fiscal_year_id": fiscal_year.id,
+        "number": 1,
+        "document_date": date(2026, 3, 1),
+        "payment_method_id": 1,
+    }
+    sale = Sale(**{**values, **kw})
+    session.add(sale)
+    await session.commit()
+    return sale
+
+
+async def add_purchase_line(session, **kw) -> PurchaseLine:
+    """A purchase with one line (category 6 Honoraires, VAT scheme 4, ISOC scheme 1).
+
+    `kw` overrides the line's columns; the purchase's go in `purchase={...}`.
+    """
+    fiscal_year = await _fiscal_year(session)
+    values = {
+        "fiscal_year_id": fiscal_year.id,
+        "number": 1,
+        "document_date": date(2026, 3, 1),
+        "payment_method_id": 1,
+        **kw.pop("purchase", {}),
+    }
+    purchase = Purchase(**values)
+    session.add(purchase)
+    await session.flush()
+    line = PurchaseLine(
+        **{
+            "purchase_id": purchase.id,
+            "unit_price": 100,
+            "category_id": 6,
+            "vat_scheme_id": 4,
+            "isoc_scheme_id": 1,
+            "sort_key": "a0",
+            **kw,
+        }
+    )
+    session.add(line)
+    await session.commit()
+    return line

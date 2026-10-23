@@ -28,3 +28,8 @@ def test_wrong_length():
 def test_normalize():
     assert iban.normalize(" be68 5390 0754 7034 ") == "BE68539007547034"
     assert iban.normalize("  ") is None
+
+
+def test_too_long_is_rejected_even_for_an_unknown_country():
+    assert iban.problem("XX00" + "1" * 31) == "IBAN invalide : vérifiez les chiffres"
+    assert iban.problem("BE68" + "5" * 31) == "IBAN invalide : vérifiez les chiffres (Belgique)"
