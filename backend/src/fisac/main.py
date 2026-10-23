@@ -3,10 +3,15 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-app = FastAPI(title="fisac")
+from fisac.errors import ApiError, api_error_handler
+from fisac.routers import financial_accounts
 
-# The API of the Compta simplifiée model is not written yet: routers will be
-# mounted here as each screen gets its endpoints.
+app = FastAPI(title="fisac")
+app.add_exception_handler(ApiError, api_error_handler)
+
+# Routers declare their paths without /api; each is mounted here as its
+# screen gets its endpoints.
+app.include_router(financial_accounts.router, prefix="/api")
 
 # Only present inside the built container image (see Dockerfile).
 # Guarded so local `uvicorn --reload` (no frontend build present) still starts.
