@@ -69,7 +69,7 @@ def test_outside_the_year_is_excluded():
 
 
 def test_mid_month_year_start_keeps_a_far_statement():
-    # closing day 1, payment day 25: bought 2026-01-05, paid 2026-03-25 (77 days later)
+    # closing day 1, payment day 25: bought 2026-01-05, paid 2026-03-25 (79 days later)
     card = Card(7, "Carte Visa", 2, 1, 1, 25)
     pieces = [_piece(date(2026, 1, 5), "purchase", 1, "-20.00", account=2, card=7)]
     bank = _by_id(build([BANK, VISA], pieces, [card], date(2026, 3, 20), date(2027, 3, 19), TODAY))[1]

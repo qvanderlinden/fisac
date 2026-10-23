@@ -5,7 +5,18 @@ from conftest import add_purchase_line, add_sale
 from sqlalchemy import select
 
 from fisac import pieces
-from fisac.models import Category, CategoryDirection, SaleLine, FinancialAccount, FinancialAccountKind, PaymentMethod, PaymentMethodType
+from fisac.models import (
+    Category,
+    CategoryDirection,
+    FinancialAccount,
+    FinancialAccountKind,
+    FiscalYear,
+    PaymentMethod,
+    PaymentMethodType,
+    Purchase,
+    PurchaseLine,
+    SaleLine,
+)
 
 
 async def test_journals(client, session, monkeypatch):
@@ -53,3 +64,37 @@ async def test_journals(client, session, monkeypatch):
     assert Decimal(refs["A-0002"]["amount"]) > 0  # purchase credit note: in
     assert card_journal["closing"] == "0.00"
     assert (await client.get("/api/fiscal-years/999/journals")).status_code == 404
+
+
+async def test_statement_paid_in_a_mid_month_year_for_a_purchase_of_the_previous_one(client, session):
+    transfer = await session.scalar(select(PaymentMethod).where(PaymentMethod.type == PaymentMethodType.TRANSFER))
+    bank_account = transfer.financial_account_id
+    visa = FinancialAccount(code="VISA", name="Visa", kind=FinancialAccountKind.CARD)
+    previous = FiscalYear(start_date=date(2025, 3, 20), end_date=date(2026, 3, 19))
+    current = FiscalYear(start_date=date(2026, 3, 20), end_date=date(2027, 3, 19))
+    session.add_all([visa, previous, current])
+    await session.flush()
+    card = PaymentMethod(
+        name="Carte Visa", type=PaymentMethodType.CARD, financial_account_id=visa.id,
+        statement_closing_day=1, statement_payment_day=25, settlement_account_id=bank_account,
+    )
+    session.add(card)
+    await session.flush()
+    purchase = Purchase(
+        fiscal_year_id=previous.id, number=1, document_date=date(2026, 1, 5),
+        payment_date=date(2026, 1, 5), payment_method_id=card.id, paid=True,
+    )
+    session.add(purchase)
+    await session.flush()
+    session.add(PurchaseLine(
+        purchase_id=purchase.id, unit_price=100, category_id=6, vat_scheme_id=4,
+        isoc_scheme_id=1, sort_key="a0",
+    ))
+    current_id, visa_id = current.id, visa.id
+    await session.commit()
+    r = await client.get(f"/api/fiscal-years/{current_id}/journals")
+    assert r.status_code == 200, r.text
+    by_account = {j["account"]["id"]: j for j in r.json()}
+    for journal in (by_account[bank_account], by_account[visa_id]):
+        assert [(m["date"], m["kind"]) for m in journal["movements"]] == [("2026-03-25", "card_statement")]
+    assert by_account[bank_account]["movements"][0]["amount"].startswith("-")
