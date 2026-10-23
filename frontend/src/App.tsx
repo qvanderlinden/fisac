@@ -4,6 +4,7 @@ import { PaymentMethodsScreen } from './screens/payment-methods/PaymentMethodsSc
 import { IsocSchemesScreen } from './screens/isoc-schemes/IsocSchemesScreen'
 import { VatSchemesScreen } from './screens/vat-schemes/VatSchemesScreen'
 import { CompanyScreen } from './screens/company/CompanyScreen'
+import { FixedAssetsScreen } from './screens/fixed-assets/FixedAssetsScreen'
 import { CategoriesScreen } from './screens/categories/CategoriesScreen'
 import { PurchasesScreen } from './screens/purchases/PurchasesScreen'
 import { SalesScreen } from './screens/sales/SalesScreen'
@@ -22,8 +23,8 @@ export default function App() {
             <Route index element={<Navigate to="/societe" replace />} />
             <Route path="ventes/*" element={<SalesScreen />} />
             <Route path="achats/*" element={<PurchasesScreen />} />
-            {/* Stubs until the screens of tasks 11 to 13 replace them. */}
-            <Route path="immobilisations/*" element={<UnderConstruction />} />
+            {/* Stubs until the screens of tasks 12 and 13 replace them. */}
+            <Route path="immobilisations/*" element={<FixedAssetsScreen />} />
             <Route path="journaux/*" element={<UnderConstruction />} />
             <Route path="tva/*" element={<UnderConstruction />} />
             <Route path="resultat/*" element={<UnderConstruction />} />
