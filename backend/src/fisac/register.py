@@ -40,7 +40,6 @@ async def refresh_schedule(session: AsyncSession, asset: FixedAsset, *, reset: b
     are rewritten, and dropped when their year is no longer in the schedule.
     `reset` rewrites every row and clears `edited`. Flushes; the caller commits.
     """
-    await session.refresh(asset)  # a commit since it was loaded expired it
     _, _, value, acquired = await source(session, asset)
     model = await session.get(DepreciationModel, asset.depreciation_model_id)
     company = await get_or_create(session)

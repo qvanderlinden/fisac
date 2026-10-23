@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fisac import pieces, register
+from fisac import register
 from fisac.db import get_session
 from fisac.errors import commit, field_error, not_found
 from fisac.models import (
@@ -146,6 +146,7 @@ async def update_asset(
     if model_id is not None and model_id != asset.depreciation_model_id:
         await _check_model(session, model_id)
         asset.depreciation_model_id = model_id
+        await session.flush()
         await register.refresh_schedule(session, asset)
     await commit(session)
     return await _read(session, asset_id)

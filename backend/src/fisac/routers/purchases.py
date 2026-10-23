@@ -45,13 +45,6 @@ def _held(assets: list[FixedAsset]):
     return in_use(len(assets), f"Reprise par l'immobilisation {pieces.reference('I', first.number, 3)}")
 
 
-async def _refresh(session: AsyncSession, assets: list[FixedAsset]) -> None:
-    for asset in assets:
-        await register.refresh_schedule(session, asset)
-    if assets:
-        await commit(session)
-
-
 @router.get("/fiscal-years/{year_id}/purchases", response_model=list[PurchaseRead])
 async def list_purchases(year_id: int, session: AsyncSession = Depends(get_session)):
     return await pieces.read_pieces(session, _SPEC, Purchase.fiscal_year_id == year_id)
@@ -125,11 +118,13 @@ async def update_purchase(
     assets = await _assets(session, PurchaseLine.purchase_id == purchase_id)
     if assets and body.kind == PieceKind.CREDIT_NOTE:
         raise field_error("kind", "Une ligne de cet achat est au registre")
-    read = await pieces.update_piece(session, _SPEC, purchase_id, body)
-    if "document_date" in body.model_fields_set or "booking_date" in body.model_fields_set:
-        await _refresh(session, assets)
-        read = await pieces.read_piece(session, _SPEC, purchase_id)
-    return read
+    # One transaction: the piece's edit and the schedules it moves.
+    await pieces.update_piece(session, _SPEC, purchase_id, body, commit_now=False)
+    if body.model_fields_set & {"document_date", "booking_date"}:
+        for asset in assets:
+            await register.refresh_schedule(session, asset)
+    await commit(session)
+    return await pieces.read_piece(session, _SPEC, purchase_id)
 
 
 @router.delete("/purchases/{purchase_id}", status_code=204)
@@ -152,11 +147,13 @@ async def add_line(
 async def update_line(
     line_id: int, body: PurchaseLineUpdate, session: AsyncSession = Depends(get_session)
 ):
-    read = await pieces.update_line(session, _SPEC, line_id, body)
+    line = await session.get(PurchaseLine, line_id)
+    await pieces.update_line(session, _SPEC, line_id, body, commit_now=False)
     if body.model_fields_set & {"unit_price", "quantity", "vat_scheme_id"}:
-        await _refresh(session, await _assets(session, PurchaseLine.id == line_id))
-        read = await pieces.read_piece(session, _SPEC, read["id"])
-    return read
+        for asset in await _assets(session, PurchaseLine.id == line_id):
+            await register.refresh_schedule(session, asset)
+    await commit(session)
+    return await pieces.read_piece(session, _SPEC, line.purchase_id)
 
 
 @router.delete("/purchase-lines/{line_id}", response_model=PurchaseRead)

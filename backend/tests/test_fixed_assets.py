@@ -1,8 +1,10 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from conftest import add_purchase_line
 
+from fisac import register
 from fisac.books.depreciation import schedule
 from fisac.models import DepreciationFirstYear, DepreciationMethod
 
@@ -72,19 +74,48 @@ async def test_recompute_resets(client, session):
     assert [(r["year"], Decimal(r["amount"])) for r in got["schedule"]] == expected
 
 
+async def _stored(client, asset_id):
+    got = (await client.get(f"/api/fixed-assets/{asset_id}")).json()
+    return got, [(r["year"], Decimal(r["amount"])) for r in got["schedule"]]
+
+
 async def test_date_and_model_change_refresh(client, session):
     line = await add_purchase_line(session, unit_price=1000, vat_scheme_id=4)
     a = await _asset(client, line)
-    p = line.purchase_id
-    r = await client.patch(f"/api/purchases/{p}", json={"document_date": "2026-07-01"})
+    models = {m["id"]: m for m in (await client.get("/api/depreciation-models")).json()}
+    other = next(i for i, m in models.items() if i != 1 and m["years"] != models[1]["years"])
+
+    def expected(model_id, day):
+        m = models[model_id]
+        return schedule(Decimal("1000.00"), day, m["years"], DepreciationMethod(m["method"]), DepreciationFirstYear(m["first_year"]), 1)
+
+    r = await client.patch(f"/api/fixed-assets/{a['id']}", json={"depreciation_model_id": other, "description": "Autre"})
     assert r.status_code == 200
-    got = (await client.get(f"/api/fixed-assets/{a['id']}")).json()
+    got, rows = await _stored(client, a["id"])
+    assert (got["depreciation_model_id"], got["description"]) == (other, "Autre")
+    assert rows == expected(other, date(2026, 3, 1)) != expected(1, date(2026, 3, 1))
+
+    r = await client.patch(f"/api/purchases/{line.purchase_id}", json={"document_date": "2026-07-01"})
+    assert r.status_code == 200
+    got, rows = await _stored(client, a["id"])
     assert got["acquired_on"] == "2026-07-01"
-    first = got["schedule"][0]["amount"]
-    r = await client.patch(f"/api/fixed-assets/{a['id']}", json={"depreciation_model_id": 2, "description": "Autre"})
-    assert r.status_code == 200 and r.json()["description"] == "Autre"
-    assert sum(Decimal(x["amount"]) for x in r.json()["schedule"]) == Decimal(got["value"])
-    assert first
+    assert rows == expected(other, date(2026, 7, 1)) != expected(other, date(2026, 3, 1))
+
+
+async def test_refresh_is_atomic_with_the_edit(client, session, monkeypatch):
+    line = await add_purchase_line(session, unit_price=1000, vat_scheme_id=4)
+    a = await _asset(client, line)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("refresh failed")
+
+    monkeypatch.setattr(register, "refresh_schedule", boom)
+    with pytest.raises(RuntimeError):
+        await client.patch(f"/api/purchase-lines/{line.id}", json={"unit_price": "3000"})
+    monkeypatch.undo()
+    got = (await client.get(f"/api/purchases/{line.purchase_id}")).json()
+    assert got["lines"][0]["unit_price"] == "1000.00"
+    assert (await client.get(f"/api/fixed-assets/{a['id']}")).json()["value"] == "1000.00"
 
 
 async def test_line_lock(client, session):

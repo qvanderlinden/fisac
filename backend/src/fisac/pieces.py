@@ -229,7 +229,10 @@ async def create_piece(session: AsyncSession, spec: Spec, body) -> dict:
     return await read_piece(session, spec, piece.id)
 
 
-async def update_piece(session: AsyncSession, spec: Spec, piece_id: int, body) -> dict:
+async def update_piece(
+    session: AsyncSession, spec: Spec, piece_id: int, body, *, commit_now: bool = True
+) -> dict | None:
+    """Apply the changes; with `commit_now=False` leave them pending (None) for the caller to commit."""
     piece = await _get(session, spec.piece, piece_id, spec.name)
     changes = body.model_dump(exclude_unset=True)
     if changes.get("payment_method_id") is not None:
@@ -247,6 +250,8 @@ async def update_piece(session: AsyncSession, spec: Spec, piece_id: int, body) -
         if year.id != piece.fiscal_year_id:
             piece.number = await next_number(session, spec.piece, year.id)
             piece.fiscal_year_id = year.id
+    if not commit_now:
+        return None
     await commit(session)
     return await read_piece(session, spec, piece_id)
 
@@ -279,7 +284,10 @@ async def add_line(session: AsyncSession, spec: Spec, piece_id: int, body) -> di
     return await read_piece(session, spec, piece_id)
 
 
-async def update_line(session: AsyncSession, spec: Spec, line_id: int, body) -> dict:
+async def update_line(
+    session: AsyncSession, spec: Spec, line_id: int, body, *, commit_now: bool = True
+) -> dict | None:
+    """Apply the changes; with `commit_now=False` leave them pending (None) for the caller to commit."""
     line = await _get(session, spec.line, line_id, "Ligne")
     changes = body.model_dump(exclude_unset=True)
     await _check_line(session, spec, changes)
@@ -287,6 +295,8 @@ async def update_line(session: AsyncSession, spec: Spec, line_id: int, body) -> 
         if value is None and field != "description":
             continue
         setattr(line, field, "" if value is None else value)
+    if not commit_now:
+        return None
     await commit(session)
     return await read_piece(session, spec, getattr(line, spec.fk.key))
 
