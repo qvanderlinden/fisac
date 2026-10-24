@@ -152,7 +152,8 @@ export interface PieceRead {
   booking_date: string
   payment_method_id: number
   payment_date: string
-  paid: boolean
+  /** null for a purchase paid by card: it has no paid status, `status` follows its payment date. */
+  paid: boolean | null
   status: PieceStatus
   net: string
   vat: string

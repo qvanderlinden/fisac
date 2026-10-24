@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, null, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fisac.books.amounts import line_amounts
@@ -66,7 +66,10 @@ def reference(prefix: str, number: int, width: int) -> str:
     return f"{prefix}-{number:0{width}d}"
 
 
-def status(paid: bool, payment_date: date, today: date) -> Literal["paid", "planned", "late"]:
+def status(paid: bool | None, payment_date: date, today: date) -> Literal["paid", "planned", "late"]:
+    """A card purchase (`paid` is None) has no paid flag: the date it was used decides, never late."""
+    if paid is None:
+        return "paid" if payment_date <= today else "planned"
     if paid:
         return "paid"
     return "planned" if payment_date >= today else "late"
@@ -195,12 +198,18 @@ async def _get(session: AsyncSession, model: Any, item_id: int, name: str):
     return item
 
 
-async def _check_payment_method(session: AsyncSession, spec: Spec, method_id: int) -> None:
+async def _check_payment_method(session: AsyncSession, spec: Spec, method_id: int) -> PaymentMethod:
     method = await session.get(PaymentMethod, method_id)
     if method is None:
         raise field_error("payment_method_id", "Moyen de paiement introuvable")
     if spec is SALES and method.type == PaymentMethodType.CARD:
         raise field_error("payment_method_id", "Une vente ne se paie pas par carte")
+    return method
+
+
+async def _is_card(session: AsyncSession, method_id: int) -> bool:
+    method = await session.get(PaymentMethod, method_id)
+    return method is not None and method.type == PaymentMethodType.CARD
 
 
 async def _check_third_party(session: AsyncSession, third_party_id: int | None) -> None:
@@ -215,9 +224,11 @@ def _normalise_booking_date(piece) -> None:
 
 
 async def create_piece(session: AsyncSession, spec: Spec, body) -> dict:
-    await _check_payment_method(session, spec, body.payment_method_id)
+    method = await _check_payment_method(session, spec, body.payment_method_id)
     await _check_third_party(session, body.third_party_id)
     values = body.model_dump()
+    if method.type == PaymentMethodType.CARD:
+        values["paid"] = null()  # a card purchase has no paid status; null() beats the server default
     piece = spec.piece(**values)
     _normalise_booking_date(piece)
     field = "booking_date" if piece.booking_date else "document_date"
@@ -235,14 +246,26 @@ async def update_piece(
     """Apply the changes; with `commit_now=False` leave them pending (None) for the caller to commit."""
     piece = await _get(session, spec.piece, piece_id, spec.name)
     changes = body.model_dump(exclude_unset=True)
+    was_card = False
+    is_card = False
+    if spec.purchase:
+        was_card = await _is_card(session, piece.payment_method_id)
+        is_card = was_card
     if changes.get("payment_method_id") is not None:
-        await _check_payment_method(session, spec, changes["payment_method_id"])
+        method = await _check_payment_method(session, spec, changes["payment_method_id"])
+        is_card = method.type == PaymentMethodType.CARD
+    if is_card and changes.get("paid") is not None:
+        raise field_error("paid", "Un achat par carte n'a pas de statut payé")
     if changes.get("third_party_id") is not None:
         await _check_third_party(session, changes["third_party_id"])
     for field, value in changes.items():
         if value is None and field not in ("third_party_id", "booking_date", "description"):
             continue
         setattr(piece, field, "" if value is None and field == "description" else value)
+    if is_card:
+        piece.paid = None
+    elif was_card and changes.get("paid") is None:
+        piece.paid = False
     _normalise_booking_date(piece)
     if "document_date" in changes or "booking_date" in changes:
         field = "booking_date" if piece.booking_date else "document_date"

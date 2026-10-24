@@ -76,7 +76,7 @@ class PieceRead(BaseModel):
     booking_date: date
     payment_method_id: int
     payment_date: date
-    paid: bool
+    paid: bool | None  # None for a card purchase
     status: Literal["paid", "planned", "late"]
     net: Decimal
     vat: Decimal

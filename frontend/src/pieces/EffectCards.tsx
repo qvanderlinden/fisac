@@ -93,7 +93,7 @@ export function EffectCards({
     .filter(Boolean)
     .join(' · ')
   let cash: Row[] = [{ label: movement, amount: eur(piece.total) }]
-  let cashNote = piece.paid
+  let cashNote = piece.status === 'paid'
     ? 'Réalisée.'
     : piece.status === 'late'
       ? 'En retard : la date de paiement prévue est passée.'

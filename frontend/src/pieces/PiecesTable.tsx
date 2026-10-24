@@ -16,6 +16,7 @@ import {
   FIRST_DIR,
   NO_FILTER,
   PIECE_COMPARE,
+  canMarkPaid,
   filterPieces,
   isFiltered,
   totals,
@@ -91,7 +92,12 @@ export function PiecesTable<T extends PieceRead>({
   )
 
   const bulk: BulkAction[] = [
-    { label: copy.markPaidMany, icon: Check, run: () => onSetPaid(picked.map((s) => s.id), true) },
+    {
+      label: copy.markPaidMany,
+      icon: Check,
+      disabled: !picked.some(canMarkPaid),
+      run: () => onSetPaid(picked.filter(canMarkPaid).map((s) => s.id), true),
+    },
     { label: 'Exporter', icon: Download, disabled: true, title: 'bientôt', run: () => {} },
     { label: 'Supprimer', icon: Trash2, variant: 'danger', run: () => onDelete(picked.map((s) => s.id)) },
   ]
@@ -194,9 +200,13 @@ export function PiecesTable<T extends PieceRead>({
                       <IconButton icon={Trash2} size="sm" label={`Supprimer ${ref}`} onClick={() => onDelete([s.id])} />
                       <RowMenu
                         items={[
-                          s.paid
-                            ? { label: copy.markUnpaid, icon: Undo2, run: () => onSetPaid([s.id], false) }
-                            : { label: copy.markPaid, icon: Check, run: () => onSetPaid([s.id], true) },
+                          ...(!canMarkPaid(s)
+                            ? []
+                            : [
+                                s.paid
+                                  ? { label: copy.markUnpaid, icon: Undo2, run: () => onSetPaid([s.id], false) }
+                                  : { label: copy.markPaid, icon: Check, run: () => onSetPaid([s.id], true) },
+                              ]),
                           { label: 'Dupliquer', icon: Copy, run: () => onDuplicate(s) },
                           {
                             label: 'Créer la note de crédit',

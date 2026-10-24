@@ -510,7 +510,9 @@ class Purchase(Base):
     # Paid by card, the date of the card payment; the bank pays it later with
     # the card's statement.
     payment_date: Mapped[date] = mapped_column(Date, nullable=False)
-    paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # NULL for a card purchase, which has no paid status: the date it was
+    # used decides.
+    paid: Mapped[bool | None] = mapped_column(Boolean, nullable=True, server_default="false")
 
 
 class PurchaseLine(Base):

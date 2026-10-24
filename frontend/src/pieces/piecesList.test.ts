@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PieceRead } from '../api/types'
-import { NO_FILTER, filterPieces, periodOf, periodsOf, quartersOf, totals, unpaidTotal } from './piecesList'
+import { NO_FILTER, canMarkPaid, filterPieces, periodOf, periodsOf, quartersOf, totals, unpaidTotal } from './piecesList'
 
 const piece = (id: number, over: Partial<PieceRead> = {}): PieceRead => ({
   id,
@@ -146,5 +146,19 @@ describe('totals', () => {
       piece(3, { paid: false, status: 'late', kind: 'credit_note', total: '12.10' }),
     ]
     expect(unpaidTotal(rows)).toBe(229.9)
+  })
+
+  it('counts a card purchase by its status: paid once the card was used, due before', () => {
+    const rows = [
+      piece(1, { paid: null, status: 'paid', total: '100.00' }),
+      piece(2, { paid: null, status: 'planned', total: '50.00' }),
+    ]
+    expect(unpaidTotal(rows)).toBe(50)
+  })
+
+  it('offers "payé / non payé" to every piece but a card purchase', () => {
+    expect(canMarkPaid(piece(1))).toBe(true)
+    expect(canMarkPaid(piece(2, { paid: false, status: 'late' }))).toBe(true)
+    expect(canMarkPaid(piece(3, { paid: null, status: 'planned' }))).toBe(false)
   })
 })

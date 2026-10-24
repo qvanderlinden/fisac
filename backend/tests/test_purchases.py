@@ -110,3 +110,71 @@ async def test_available_lists_invoice_lines_only(client, session):
     assert rows[0]["fiscal_year"] == 2026 and rows[0]["net"] == "100.00"
     assert len((await client.get("/api/purchase-lines/available?q=lap")).json()) == 1
     assert (await client.get("/api/purchase-lines/available?q=zzz")).json() == []
+
+
+async def card_method(client):
+    return (await client.post("/api/payment-methods", json={
+        "name": "Visa", "type": "card", "statement_closing_day": 25, "statement_payment_day": 5})).json()["id"]
+
+
+async def test_card_status_comes_from_the_payment_date_only():
+    from datetime import date
+
+    from fisac import pieces
+    d = date(2026, 5, 1)
+    assert pieces.status(None, d, d) == "paid"
+    assert pieces.status(None, date(2026, 4, 1), d) == "paid"
+    assert pieces.status(None, date(2026, 5, 2), d) == "planned"
+    assert pieces.status(False, date(2026, 4, 1), d) == "late"
+
+
+async def test_card_purchase_has_no_paid(client, monkeypatch):
+    from datetime import date
+
+    from fisac import pieces
+    monkeypatch.setattr(pieces, "today", lambda: date(2026, 3, 15))
+    await open_2026(client)
+    card = await card_method(client)
+    past = await make(client, payment_method_id=card, payment_date="2026-03-15", paid=True)
+    future = await make(client, payment_method_id=card, payment_date="2026-03-16")
+    assert (past["paid"], past["status"]) == (None, "paid")
+    assert (future["paid"], future["status"]) == (None, "planned")
+    plain = await make(client, payment_date="2026-03-01")
+    assert (plain["paid"], plain["status"]) == (False, "late")
+
+
+async def test_paid_on_a_card_purchase_is_refused(client):
+    await open_2026(client)
+    card = await card_method(client)
+    p = await make(client, payment_method_id=card)
+    r = await client.patch(f"/api/purchases/{p['id']}", json={"paid": True})
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "paid"]
+    assert r.json()["detail"][0]["msg"] == "Un achat par carte n'a pas de statut payé"
+    # also when the same request moves the purchase to a card
+    plain = await make(client)
+    r = await client.patch(f"/api/purchases/{plain['id']}", json={"payment_method_id": card, "paid": False})
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "paid"]
+    assert (await client.get(f"/api/purchases/{p['id']}")).json()["paid"] is None
+
+
+async def test_switching_between_card_and_transfer(client):
+    await open_2026(client)
+    card = await card_method(client)
+    p = await make(client, payment_method_id=card)
+    assert p["paid"] is None
+    p = (await client.patch(f"/api/purchases/{p['id']}", json={"payment_method_id": 1})).json()
+    assert p["paid"] is False
+    p = (await client.patch(f"/api/purchases/{p['id']}", json={"paid": True})).json()
+    assert p["paid"] is True
+    p = (await client.patch(f"/api/purchases/{p['id']}", json={"payment_method_id": card})).json()
+    assert (p["paid"], p["status"] in {"paid", "planned"}) == (None, True)
+    p = (await client.patch(f"/api/purchases/{p['id']}", json={"payment_method_id": 1, "paid": True})).json()
+    assert p["paid"] is True
+
+
+async def test_paid_column_is_nullable_after_migration(session):
+    from sqlalchemy import text
+    row = (await session.execute(text(
+        "SELECT is_nullable, column_default FROM information_schema.columns "
+        "WHERE table_schema = 'fisac' AND table_name = 'purchases' AND column_name = 'paid'"))).one()
+    assert row.is_nullable == "YES" and row.column_default == "false"

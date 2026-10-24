@@ -61,7 +61,7 @@ async def read_journals(year_id: int, session: AsyncSession = Depends(get_sessio
                 read["payment_date"], kind, read["id"],
                 pieces.reference(prefix, read["number"], 4),
                 read["third_party_name"] or read["description"],
-                amount, account_of[method_id], read["paid"],
+                amount, account_of[method_id], read["status"] == "paid",
                 method_id if method_id in is_card else None,
             ))
     built = journals.build(accounts, cash, cards, start, end, pieces.today())

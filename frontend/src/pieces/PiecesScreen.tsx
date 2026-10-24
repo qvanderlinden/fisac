@@ -8,6 +8,7 @@ import type { DeleteConfirmProps } from '../lists/DeleteConfirm'
 import { EditDialog } from '../lists/EditDialog'
 import { useFiscalYear } from '../shell/FiscalYearContext'
 import { rowAmount } from './listLabels'
+import { canMarkPaid } from './piecesList'
 import { PiecesCards } from './PiecesCards'
 import { PiecesTable } from './PiecesTable'
 import { copyPiece, createPiece, deletePiece, setPaid } from './pieceActions'
@@ -93,8 +94,12 @@ export function PiecesScreen<T extends SaleRead | PurchaseRead>({
     )
   }
 
+  // A card purchase has no paid status to set: skipped.
   const markPaid = (ids: number[], paid: boolean) =>
-    void each(ids, (id) => setPaid<T>(side, id, paid)).then((done) => done.forEach((d) => put(d.value)))
+    void each(
+      ids.filter((id) => data.some((p) => p.id === id && canMarkPaid(p))),
+      (id) => setPaid<T>(side, id, paid),
+    ).then((done) => done.forEach((d) => put(d.value)))
 
   const doomed = deleting ? data.filter((p) => deleting.includes(p.id)) : []
   const one = doomed.length === 1

@@ -103,9 +103,14 @@ export function totals(rows: PieceRead[]): { net: number; vat: number; total: nu
   return { net: net / 100, vat: vat / 100, total: total / 100 }
 }
 
-/** What the unpaid rows still bring in (or cost), signed. */
+/** A card purchase (paid null) has no paid flag to set: its status follows its payment date. */
+export function canMarkPaid(p: PieceRead): boolean {
+  return p.paid !== null
+}
+
+/** What the rows not yet paid still bring in (or cost), signed. */
 export function unpaidTotal(rows: PieceRead[]): number {
-  return rows.filter((p) => !p.paid).reduce((sum, p) => sum + signOf(p.kind) * cents(p.total), 0) / 100
+  return rows.filter((p) => p.status !== 'paid').reduce((sum, p) => sum + signOf(p.kind) * cents(p.total), 0) / 100
 }
 
 export type PieceSortKey = 'date' | 'number' | 'tiers' | 'description' | 'status' | 'net' | 'vat' | 'total'

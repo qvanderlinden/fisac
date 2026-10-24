@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from conftest import add_purchase_line, add_sale
-from sqlalchemy import select
+from sqlalchemy import null, select
 
 from fisac import pieces
 from fisac.models import (
@@ -98,3 +98,28 @@ async def test_statement_paid_in_a_mid_month_year_for_a_purchase_of_the_previous
     for journal in (by_account[bank_account], by_account[visa_id]):
         assert [(m["date"], m["kind"]) for m in journal["movements"]] == [("2026-03-25", "card_statement")]
     assert by_account[bank_account]["movements"][0]["amount"].startswith("-")
+
+
+async def test_future_card_purchase_is_planned_in_the_journal(client, session, monkeypatch):
+    monkeypatch.setattr(pieces, "today", lambda: date(2026, 10, 23))
+    transfer = await session.scalar(select(PaymentMethod).where(PaymentMethod.type == PaymentMethodType.TRANSFER))
+    bank_account = transfer.financial_account_id
+    visa = FinancialAccount(code="VISA", name="Visa", kind=FinancialAccountKind.CARD)
+    session.add(visa)
+    await session.flush()
+    card = PaymentMethod(
+        name="Carte Visa", type=PaymentMethodType.CARD, financial_account_id=visa.id,
+        statement_closing_day=25, statement_payment_day=5, settlement_account_id=bank_account,
+    )
+    session.add(card)
+    await session.flush()
+    card_id, visa_id = card.id, visa.id
+    for number, day in ((1, date(2026, 10, 20)), (2, date(2026, 10, 30))):
+        await add_purchase_line(session, purchase={
+            "number": number, "payment_date": day, "payment_method_id": card_id, "paid": null()})
+    year = await session.scalar(select(FiscalYear.id))
+    r = await client.get(f"/api/fiscal-years/{year}/journals")
+    assert r.status_code == 200, r.text
+    by_account = {j["account"]["id"]: j for j in r.json()}
+    planned = {m["reference"]: m["planned"] for m in by_account[visa_id]["movements"] if m["kind"] == "purchase"}
+    assert planned == {"A-0001": False, "A-0002": True}

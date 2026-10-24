@@ -64,7 +64,7 @@ export function countOf(shown: number, all: number, copy: SideCopy): string {
 
 /** "€1 234,00 à recevoir" / "… à payer", or "tout est payé". */
 export function dueNote(rows: PieceRead[], copy: SideCopy): string {
-  return rows.some((p) => !p.paid) ? `${eur(unpaidTotal(rows))} ${copy.due}` : 'tout est payé'
+  return rows.some((p) => p.status !== 'paid') ? `${eur(unpaidTotal(rows))} ${copy.due}` : 'tout est payé'
 }
 
 /** A row's amount with its sign: a credit note shows negative. */

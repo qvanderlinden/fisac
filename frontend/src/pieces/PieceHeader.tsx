@@ -60,7 +60,9 @@ export function PieceHeader({
   const [kind, pickKind] = useSavedPick<PieceKind>(piece.kind, (v) => onPatch({ kind: v }))
   const [tiers, pickTiers] = useSavedPick(piece.third_party_id, (v) => onPatch({ third_party_id: v }))
   const [method, pickMethod] = useSavedPick(piece.payment_method_id, (v) => onPatch({ payment_method_id: v }))
-  const [paid, pickPaid] = useSavedPick(piece.paid, (v) => onPatch({ paid: v }))
+  const [paid, pickPaid] = useSavedPick(piece.paid ?? false, (v) => onPatch({ paid: v }))
+  // A purchase paid by card has no paid status: its payment date is the day the card was used.
+  const byCard = refs.paymentMethods.find((m) => m.id === method)?.type === 'card'
   const description = useSavedText(piece.description, (text) => onPatch({ description: text.trim() }))
   const overridden = piece.booking_date !== piece.document_date
   const [showBooking, setShowBooking] = useState(false)
@@ -152,12 +154,12 @@ export function PieceHeader({
   )
   const paymentDate = (
     <DateField
-      label={paid ? 'Date de paiement' : 'Paiement prévu le'}
+      label={paid || byCard ? 'Date de paiement' : 'Paiement prévu le'}
       server={piece.payment_date}
       save={(d) => onPatch({ payment_date: d })}
     />
   )
-  const paidField = (
+  const paidField = byCard ? null : (
     <Field label="Statut">
       <Checkbox label={copy.paid} checked={paid} onCheckedChange={(v) => pickPaid(v === true)} />
     </Field>
