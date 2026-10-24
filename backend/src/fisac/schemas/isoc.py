@@ -12,6 +12,8 @@ class DisallowedLineRead(BaseModel):
     amount: Decimal  # signed charge, or the asset's depreciation of the year
     deductible_rate: Decimal
     disallowed: Decimal
+    piece_id: int | None  # the purchase to open; None for an asset's depreciation
+    asset_id: int | None  # the fixed asset to open; None for a purchase line
 
 
 class DisallowedRubricRead(BaseModel):

@@ -37,6 +37,7 @@ async def read_isoc(year_id: int, session: AsyncSession = Depends(get_session)):
                 {
                     "reference": line.reference, "date": line.date, "label": line.label, "amount": line.base,
                     "deductible_rate": line.deductible_rate, "disallowed": line.disallowed,
+                    "piece_id": line.piece_id, "asset_id": line.asset_id,
                 }
                 for line in lines
                 if line.rubric == rubric

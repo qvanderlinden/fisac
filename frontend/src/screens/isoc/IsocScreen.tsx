@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Badge, Callout } from '@qvanderlinden/ui'
-import type { IsocPrepaymentRead, IsocRead, IsocRubric, PaymentMethodRead, ResultRead } from '../../api/types'
+import { Badge, Callout, toast } from '@qvanderlinden/ui'
+import type { IsocPrepaymentRead, IsocRead, IsocRubric, PaymentMethodRead } from '../../api/types'
 import { messageOf } from '../../errors'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useResource } from '../../hooks/useResource'
@@ -27,8 +27,6 @@ export function IsocScreen() {
   const base = current ? `/fiscal-years/${current.id}` : null
   const isoc = useResource<IsocRead>(base && `${base}/isoc`)
   const prepayments = useResource<IsocPrepaymentRead[]>(base && `${base}/isoc-prepayments`)
-  // Only to find the ids behind the references of the disallowed lines.
-  const result = useResource<ResultRead>(base && `${base}/result`)
   const methods = useResource<PaymentMethodRead[]>('/payment-methods')
   const [rubric, setRubric] = useState<IsocRubric | null>(null)
   const [purchase, setPurchase] = useState<number | null>(null)
@@ -39,8 +37,14 @@ export function IsocScreen() {
     reloadIsoc,
   )
 
+  // A failed reload keeps the figures on screen and says so; the page-wide error is for a first load.
+  const loaded = isoc.data !== undefined && prepayments.data !== undefined
   const error = isoc.error ?? prepayments.error
-  if (error) {
+  useEffect(() => {
+    if (error && loaded) toast(messageOf(error), { tone: 'negative' })
+  }, [error, loaded])
+
+  if (error && !loaded) {
     return (
       <Callout tone="negative" title="L’ISOC n’a pas pu être chargé.">
         {messageOf(error)}
@@ -64,10 +68,7 @@ export function IsocScreen() {
   }
 
   // Once the panel's last save or its delete has been answered, not as it closes.
-  const reload = () => {
-    void isoc.reload()
-    void result.reload()
-  }
+  const reload = () => void isoc.reload()
 
   const computation = { isoc: data, onOpen: open }
   const conditions = <IsocConditions isoc={data} yearId={current.id} onSaved={reloadIsoc} />
@@ -119,7 +120,6 @@ export function IsocScreen() {
         <DisallowedDetail
           rubric={rubric}
           isoc={data}
-          result={result.data}
           year={year}
           mobile={mobile}
           onOpen={openLine}

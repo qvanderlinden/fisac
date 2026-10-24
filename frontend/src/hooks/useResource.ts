@@ -18,9 +18,23 @@ function asApiError(e: unknown): ApiError {
 }
 
 /**
+ * Numbers the loads of one resource: only the answer to the latest one may land, so two
+ * overlapping reloads can never leave the older answer on screen.
+ */
+export function createLoadCounter() {
+  let latest = 0
+  return {
+    /** A new load; its number. */
+    start: () => ++latest,
+    isLatest: (n: number) => n === latest,
+  }
+}
+
+/**
  * GETs `/api{path}` and keeps the answer; a null path loads nothing. A new
- * path drops the previous data, and an answer for a path no longer asked for
- * is ignored.
+ * path drops the previous data; an answer for a path no longer asked for, or
+ * to a load since overtaken by another, is ignored. A failed reload keeps the
+ * data it had (the screen decides how to report the error).
  */
 export function useResource<T>(path: string | null): Resource<T> {
   const [state, setState] = useState<{ path: string | null; data?: T; error?: ApiError; loading: boolean }>({
@@ -29,16 +43,18 @@ export function useResource<T>(path: string | null): Resource<T> {
   })
   const current = useRef(path)
   current.current = path
+  const [loads] = useState(createLoadCounter)
 
   const load = useCallback(async (p: string) => {
+    const n = loads.start()
     setState((s) => (s.path === p ? { ...s, loading: true } : { path: p, loading: true }))
     try {
       const data = await api.get<T>(p)
-      if (current.current === p) setState({ path: p, data, loading: false })
+      if (current.current === p && loads.isLatest(n)) setState({ path: p, data, loading: false })
     } catch (e) {
-      if (current.current === p) setState((s) => ({ ...s, path: p, error: asApiError(e), loading: false }))
+      if (current.current === p && loads.isLatest(n)) setState((s) => ({ ...s, path: p, error: asApiError(e), loading: false }))
     }
-  }, [])
+  }, [loads])
 
   useEffect(() => {
     if (path === null) setState({ path: null, loading: false })

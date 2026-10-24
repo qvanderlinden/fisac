@@ -1,4 +1,4 @@
-import type { ExemptReason, IsocPrepaymentView, IsocRead, IsocRubric, ResultRead } from '../../api/types'
+import type { DisallowedLineRead, ExemptReason, IsocPrepaymentRead, IsocPrepaymentView, IsocRead, IsocRubric } from '../../api/types'
 import { countLabel, eur, formatRate, pluralNoun } from '../../format'
 
 const cents = (value: string) => Math.round(Number(value) * 100)
@@ -145,19 +145,21 @@ export function bonificationText(view: IsocPrepaymentView | undefined): string {
 
 export type LineTarget = { kind: 'purchase'; id: number } | { kind: 'asset'; id: number }
 
-/**
- * The purchase or fixed asset behind a disallowed line, from its reference, looked up in
- * the result read (which carries the ids); null when it is not there.
- */
-export function lineTarget(reference: string, result: ResultRead | undefined): LineTarget | null {
-  if (!result) return null
-  if (reference.startsWith('I-')) {
-    const asset = result.depreciation.by_asset.find((a) => a.reference === reference)
-    return asset ? { kind: 'asset', id: asset.asset_id } : null
-  }
-  for (const category of result.charges.by_category) {
-    const piece = category.pieces.find((p) => p.reference === reference)
-    if (piece) return { kind: 'purchase', id: piece.piece_id }
-  }
+/** The purchase or fixed asset a disallowed line opens; null when it carries neither. */
+export function lineTarget(line: Pick<DisallowedLineRead, 'piece_id' | 'asset_id'>): LineTarget | null {
+  if (line.asset_id !== null) return { kind: 'asset', id: line.asset_id }
+  if (line.piece_id !== null) return { kind: 'purchase', id: line.piece_id }
   return null
+}
+
+/**
+ * What ticking or unticking "Payé" sends, decided against the advance payment as the server
+ * last answered it (after the saves queued before, a date typed just before included): ticked
+ * with no date yet, it is paid on its due date; otherwise only `paid` changes.
+ */
+export function paidBody(
+  paid: boolean,
+  latest: Pick<IsocPrepaymentRead, 'payment_date' | 'due_date'>,
+): { paid: boolean; payment_date?: string } {
+  return paid && !latest.payment_date ? { paid: true, payment_date: latest.due_date } : { paid }
 }

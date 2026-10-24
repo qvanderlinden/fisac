@@ -338,6 +338,10 @@ export interface DisallowedLineRead {
   amount: string
   deductible_rate: string
   disallowed: string
+  /** The purchase to open; null for an asset's depreciation. */
+  piece_id: number | null
+  /** The fixed asset to open; null for a purchase line. */
+  asset_id: number | null
 }
 
 export interface DisallowedRubricRead {

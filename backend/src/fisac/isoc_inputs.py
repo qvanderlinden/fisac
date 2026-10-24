@@ -131,7 +131,7 @@ async def load(session: AsyncSession, fiscal_year: FiscalYear) -> IsocYear:
                     if rate < 100:
                         disallowed.append(isoc.DisallowedLine(
                             rubric, reference, read["booking_date"], read["third_party_name"] or "",
-                            amount, rate, isoc.disallowed_part(amount, rate),
+                            amount, rate, isoc.disallowed_part(amount, rate), piece_id=read["id"],
                         ))
 
     assets = await session.execute(
@@ -153,6 +153,7 @@ async def load(session: AsyncSession, fiscal_year: FiscalYear) -> IsocYear:
         if rate < 100:
             disallowed.append(isoc.DisallowedLine(
                 rubric, reference, acquired_on, description, amount, rate, isoc.disallowed_part(amount, rate),
+                asset_id=asset_id,
             ))
     book = result.compute(built["sales"], built["purchases"], depreciation)
 

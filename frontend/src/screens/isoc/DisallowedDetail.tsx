@@ -1,5 +1,5 @@
 import { Callout } from '@qvanderlinden/ui'
-import type { DisallowedLineRead, IsocRead, IsocRubric, ResultRead } from '../../api/types'
+import type { DisallowedLineRead, IsocRead, IsocRubric } from '../../api/types'
 import { countLabel, eur, formatDate, formatRate } from '../../format'
 import { ListDialog } from '../../lists/EditDialog'
 import { FullScreenForm } from '../../lists/FullScreenForm'
@@ -13,7 +13,6 @@ import { lineTarget, rubricLabels, type LineTarget } from './isocView'
 export function DisallowedDetail({
   rubric,
   isoc,
-  result,
   year,
   mobile,
   onOpen,
@@ -21,8 +20,6 @@ export function DisallowedDetail({
 }: {
   rubric: IsocRubric
   isoc: IsocRead
-  /** Where the ids of the pieces and assets are looked up. */
-  result: ResultRead | undefined
   year: string
   mobile: boolean
   onOpen(target: LineTarget): void
@@ -49,7 +46,7 @@ export function DisallowedDetail({
       </Callout>
       <ul className="m-0 flex list-none flex-col divide-y divide-line-hairline rounded-lg border border-line-hairline p-0">
         {lines.map((line) => {
-          const target = lineTarget(line.reference, result)
+          const target = lineTarget(line)
           return (
             <li key={`${line.reference}-${line.date}-${line.amount}`}>
               {target ? (

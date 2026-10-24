@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { IsocRead, ResultRead } from '../../api/types'
+import type { IsocPrepaymentView, IsocRead } from '../../api/types'
 import { eur } from '../../format'
-import { balanceLabel, computationRows, conditionLabels, lineTarget, prepaymentState } from './isocView'
+import { balanceLabel, bonificationText, computationRows, conditionLabels, lineTarget, paidBody, prepaymentState } from './isocView'
 
 const rubric = (total: string, lines: IsocRead['disallowed']['restaurant']['lines'] = []) => ({ total, lines })
 
@@ -10,7 +10,7 @@ const isoc = (over: Partial<IsocRead> = {}): IsocRead => ({
   disallowed: {
     total: '28.47',
     restaurant: rubric('28.47', [
-      { reference: 'A-0005', date: '2026-06-18', label: 'Repas client', amount: '91.84', deductible_rate: '69.00', disallowed: '28.47' },
+      { reference: 'A-0005', date: '2026-06-18', label: 'Repas client', amount: '91.84', deductible_rate: '69.00', disallowed: '28.47', piece_id: 12, asset_id: null },
     ]),
     car: rubric('0.00'),
     other: rubric('0.00'),
@@ -95,20 +95,37 @@ describe('prepaymentState', () => {
 })
 
 describe('lineTarget', () => {
-  const result = {
-    revenue: { total: '0', by_category: [] },
-    charges: {
-      total: '91.84',
-      by_category: [{ category_id: 1, label: 'Restaurant', total: '91.84', pieces: [{ piece_id: 12, reference: 'A-0005', date: '2026-06-18', third_party: null, amount: '91.84' }] }],
-    },
-    depreciation: { total: '500', by_asset: [{ asset_id: 3, reference: 'I-001', description: 'Voiture', amount: '500' }] },
-    result: '0',
-  } as unknown as ResultRead
+  it('opens the purchase or the asset the line carries', () => {
+    expect(lineTarget({ piece_id: 12, asset_id: null })).toEqual({ kind: 'purchase', id: 12 })
+    expect(lineTarget({ piece_id: null, asset_id: 3 })).toEqual({ kind: 'asset', id: 3 })
+    expect(lineTarget({ piece_id: null, asset_id: null })).toBeNull()
+  })
+})
 
-  it('finds the purchase or the asset behind a disallowed line', () => {
-    expect(lineTarget('A-0005', result)).toEqual({ kind: 'purchase', id: 12 })
-    expect(lineTarget('I-001', result)).toEqual({ kind: 'asset', id: 3 })
-    expect(lineTarget('A-0099', result)).toBeNull()
-    expect(lineTarget('A-0005', undefined)).toBeNull()
+describe('paidBody', () => {
+  it('keeps a date already saved, typed just before the tick', () => {
+    expect(paidBody(true, { payment_date: '2026-04-02', due_date: '2026-04-10' })).toEqual({ paid: true })
+  })
+  it('pays on the due date when no date is known', () => {
+    expect(paidBody(true, { payment_date: null, due_date: '2026-04-10' })).toEqual({ paid: true, payment_date: '2026-04-10' })
+  })
+  it('only unticks, keeping the date', () => {
+    expect(paidBody(false, { payment_date: '2026-04-02', due_date: '2026-04-10' })).toEqual({ paid: false })
+  })
+})
+
+describe('bonificationText', () => {
+  const view = (over: Partial<IsocPrepaymentView>): IsocPrepaymentView => ({
+    id: 3, number: 3, due_date: '2026-10-12', amount: '5000.00', payment_method_id: 1, paid: true,
+    payment_date: '2026-10-20', quarter: 4, bonification_rate: '4.5', bonification: '225.00', ...over,
+  })
+  it('says which quarter a late payment counts for', () => {
+    expect(bonificationText(view({}))).toBe(`4,5% · ${eur('225')} (compte pour VA4)`)
+  })
+  it('shows the rate alone when it counts for its own quarter', () => {
+    expect(bonificationText(view({ quarter: 3, bonification_rate: '6', bonification: '300.00' }))).toBe(`6% · ${eur('300')}`)
+  })
+  it('shows a dash when unpaid', () => {
+    expect(bonificationText(view({ paid: false, quarter: null, bonification_rate: null, bonification: '0.00' }))).toBe('—')
   })
 })

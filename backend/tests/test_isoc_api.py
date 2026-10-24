@@ -72,6 +72,9 @@ async def test_isoc_and_result_after_tax(client):
     [line] = isoc["disallowed"]["restaurant"]["lines"]
     assert line["reference"] == "A-0001" and line["amount"] == "1120.00"
     assert line["deductible_rate"] == "69.00" and line["disallowed"] == "347.20"
+    purchases = (await client.get(f"/api/fiscal-years/{fy}/purchases")).json()
+    assert line["piece_id"] == next(p["id"] for p in purchases if p["number"] == 1)
+    assert line["asset_id"] is None
     assert isoc["taxable_base"] == "99227.20"
     assert isoc["reduced"] is True
     assert isoc["tax"] == "19845.44"
@@ -120,6 +123,7 @@ async def test_isoc_of_an_asset_taken_over(client):
     [line] = isoc["disallowed"]["car"]["lines"]
     assert line["reference"] == "I-001" and line["date"] == "2026-01-15"
     assert line["amount"] == "4000.00" and line["disallowed"] == "1000.00"
+    assert line["asset_id"] == asset["id"] and line["piece_id"] is None
     assert isoc["taxable_base"] == "0.00" and isoc["tax"] == "0.00"
     assert (await client.get("/api/fiscal-years/999/isoc")).status_code == 404
 

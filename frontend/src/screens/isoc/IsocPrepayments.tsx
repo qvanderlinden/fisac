@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Badge, Callout, Card, Checkbox, Field, Input, Select, toast } from '@qvanderlinden/ui'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
 import { api } from '../../api/client'
@@ -7,7 +7,7 @@ import { isApiError, messageOf } from '../../errors'
 import { amountInput, countLabel, eur, formatDate, formatRate, isBadAmount, parseDecimal } from '../../format'
 import { useSavedPick, useSavedText } from '../../pieces/useSavedField'
 import { createSerialQueue } from '../../serialQueue'
-import { STATE_TONE, bonificationText, exemptReasons, prepaymentState } from './isocView'
+import { STATE_TONE, bonificationText, exemptReasons, paidBody, prepaymentState } from './isocView'
 
 const INVALID_AMOUNT = 'Montant invalide : il n’a pas été enregistré'
 
@@ -18,8 +18,11 @@ type Errors = Record<string, string>
 
 export interface PrepaymentEditor {
   errors: Errors
-  /** PATCHes one advance payment; resolves false when refused (toasted, the field marked). */
-  save(row: IsocPrepaymentRead, body: Body): Promise<boolean>
+  /**
+   * PATCHes one advance payment; resolves false when refused (toasted, the field marked).
+   * A function body is decided when its turn comes, against the row as last answered.
+   */
+  save(row: IsocPrepaymentRead, body: Body | ((latest: IsocPrepaymentRead) => Body)): Promise<boolean>
 }
 
 /**
@@ -30,11 +33,16 @@ export interface PrepaymentEditor {
 export function usePrepaymentEditor(onSaved: (row: IsocPrepaymentRead) => void, reload: () => Promise<void>): PrepaymentEditor {
   const [enqueue] = useState(createSerialQueue)
   const [errors, setErrors] = useState<Errors>({})
+  // Each row as the server last answered it; read inside the queue, so never a stale render's.
+  const answered = useRef(new Map<number, IsocPrepaymentRead>())
 
-  function save(row: IsocPrepaymentRead, body: Body) {
+  function save(row: IsocPrepaymentRead, body: Body | ((latest: IsocPrepaymentRead) => Body)) {
     return enqueue(async () => {
       try {
-        onSaved(await api.patch<IsocPrepaymentRead>(`/isoc-prepayments/${row.id}`, body))
+        const sent = typeof body === 'function' ? body(answered.current.get(row.id) ?? row) : body
+        const saved = await api.patch<IsocPrepaymentRead>(`/isoc-prepayments/${row.id}`, sent)
+        answered.current.set(saved.id, saved)
+        onSaved(saved)
         // The row as saved satisfies every rule: its earlier refusals no longer hold.
         setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !k.startsWith(`${row.id}:`))))
         await reload()
@@ -74,10 +82,9 @@ function usePrepaymentFields({ row, methods, editor }: RowProps) {
     return editor.save(row, { payment_date: text || null })
   }, { delay: null })
   const [method, pickMethod] = useSavedPick(row.payment_method_id, (v) => editor.save(row, { payment_method_id: v }))
-  // Ticked with no date yet: paid on its due date, the date stays editable.
-  const [paid, pickPaid] = useSavedPick(row.paid, (v) =>
-    editor.save(row, v && !row.payment_date ? { paid: true, payment_date: row.due_date } : { paid: v }),
-  )
+  // Ticked with no date yet: paid on its due date, the date stays editable. Decided in the
+  // queue: a date typed just before (saved on the blur the click causes) is kept.
+  const [paid, pickPaid] = useSavedPick(row.paid, (v) => editor.save(row, (latest) => paidBody(v, latest)))
   const amountBad = amount.value.trim() !== '' && isBadAmount(amount.value)
   const options = methods
     .filter((m) => m.type !== 'card' || m.id === row.payment_method_id)

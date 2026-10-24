@@ -22,6 +22,8 @@ class DisallowedLine:
     base: Decimal  # signed
     deductible_rate: Decimal
     disallowed: Decimal
+    piece_id: int | None = None  # the purchase, for a line no fixed asset takes over
+    asset_id: int | None = None  # the fixed asset, for its depreciation
 
 
 @dataclass(frozen=True)
