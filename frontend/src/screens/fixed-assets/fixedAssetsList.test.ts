@@ -78,6 +78,10 @@ describe('availableQuery', () => {
     expect(availableQuery('1500,5')).toBe('1500.50')
     expect(availableQuery('1500.5')).toBe('1500.50')
     expect(availableQuery(' 99,9 € ')).toBe('99.90')
+    expect(availableQuery('1\u202f500,00')).toBe('1500.00')
+    expect(availableQuery('1\u00a0500,00')).toBe('1500.00')
+    expect(availableQuery('1 500')).toBe('1500')
+    expect(availableQuery('1 234,567')).toBe('1 234,567')
   })
   it('sends plain text and bare numbers as they are', () => {
     expect(availableQuery('écran')).toBe('écran')

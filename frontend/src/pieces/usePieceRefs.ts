@@ -2,6 +2,7 @@ import type {
   CategoryRead,
   CompanyRead,
   FinancialAccountRead,
+  IsocSchemeRead,
   PaymentMethodRead,
   ThirdPartyRead,
   VatRegime,
@@ -21,6 +22,8 @@ export interface PieceRefs {
   /** The methods the side may use: no card for a sale. */
   paymentMethods: PaymentMethodRead[]
   vatRegime: VatRegime
+  /** The ISOC schemes a purchase line picks from (none for a sale). */
+  isocSchemes: IsocSchemeRead[]
   /** The financial accounts: a card statement names the account that pays it. */
   accounts: FinancialAccountRead[]
 }
@@ -31,15 +34,17 @@ export function usePieceRefs(side: PieceSide): { refs: PieceRefs | undefined; er
   const categories = useResource<CategoryRead[]>(`/categories?direction=${side === 'sale' ? 'sales' : 'purchases'}`)
   const vatSchemes = useResource<VatSchemeRead[]>('/vat-schemes')
   const paymentMethods = useResource<PaymentMethodRead[]>('/payment-methods')
+  const isocSchemes = useResource<IsocSchemeRead[]>('/isoc-schemes')
   const company = useResource<CompanyRead>('/company')
   const accounts = useResource<FinancialAccountRead[]>('/financial-accounts')
   const error =
-    thirdParties.error ?? categories.error ?? vatSchemes.error ?? paymentMethods.error ?? company.error ?? accounts.error
+    thirdParties.error ?? categories.error ?? vatSchemes.error ?? paymentMethods.error ?? isocSchemes.error ?? company.error ?? accounts.error
   if (
     !thirdParties.data ||
     !categories.data ||
     !vatSchemes.data ||
     !paymentMethods.data ||
+    !isocSchemes.data ||
     !company.data ||
     !accounts.data
   ) {
@@ -51,6 +56,7 @@ export function usePieceRefs(side: PieceSide): { refs: PieceRefs | undefined; er
       categories: categories.data,
       vatSchemes: vatSchemes.data.filter((v) => (side === 'sale' ? v.for_sales : v.for_purchases)),
       paymentMethods: paymentMethods.data.filter((m) => side === 'purchase' || m.type !== 'card'),
+      isocSchemes: isocSchemes.data,
       vatRegime: company.data.vat_regime,
       accounts: accounts.data,
     },

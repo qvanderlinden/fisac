@@ -85,6 +85,7 @@ export function PieceForm<T extends SaleRead | PurchaseRead>({
       side={side}
       categories={refs.categories}
       vatSchemes={refs.vatSchemes}
+      isocSchemes={refs.isocSchemes}
       mobile={mobile}
       onAdd={addLine}
       onPatch={patchLine}

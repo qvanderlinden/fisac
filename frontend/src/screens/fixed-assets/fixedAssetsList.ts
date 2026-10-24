@@ -1,4 +1,5 @@
 import type { FixedAssetStatus, RegisterRow, ScheduleRow } from '../../api/types'
+import { parseDecimal } from '../../format'
 import { reference } from '../../pieces/pieceStatus'
 
 // What the register's table and cards share: the filters, the totals of the rows shown,
@@ -88,18 +89,23 @@ export const FIRST_DIR: Record<AssetSortKey, 'asc' | 'desc'> = {
   status: 'asc',
 }
 
-// A French amount with a decimal part ("1 500,00", "1500,5", "99.9 €") or a grouped one ("1 500").
-const AMOUNT = /^\d{1,3}(?:[   ]\d{3})+(?:[.,]\d{1,2})?$|^\d+[.,]\d{1,2}$/
+// Only digits, separators and the spaces a French amount is grouped with (space, no-break, narrow no-break).
+const AMOUNT_CHARS = /^[\d\s\u00a0\u202f.,]+$/
 
 /**
- * What the search of available purchase lines sends as `q` (R4): an amount typed the French
- * way ("1 500,00", "1500,5") in the API's form ("1500.00", "1500.50"); anything else as typed.
+ * What the search of available purchase lines sends as `q` (R4, R6): an amount typed the French
+ * way ("1 500,00", "1500,5") in the API's form ("1500.00", "1500.50"), read by `parseDecimal`;
+ * anything else as typed.
  */
 export function availableQuery(text: string): string {
   const typed = text.trim().replace(/\s*€$/, '')
-  if (!AMOUNT.test(typed)) return text.trim()
-  const [whole, decimals = ''] = typed.replace(/[   ]/g, '').split(/[.,]/)
-  return decimals ? `${whole}.${decimals.padEnd(2, '0')}` : whole
+  if (!/\d/.test(typed) || !AMOUNT_CHARS.test(typed)) return text.trim()
+  const value = parseDecimal(typed)
+  // A bare number ("12", "1 500") is also a piece number or a text: it keeps its digits.
+  if (value === null) return text.trim()
+  if (!/[.,]/.test(typed)) return typed.replace(/\D/g, '')
+  const [whole, decimals = ''] = value.split('.')
+  return `${whole}.${decimals.padEnd(2, '0')}`
 }
 
 export interface ScheduleLine extends ScheduleRow {

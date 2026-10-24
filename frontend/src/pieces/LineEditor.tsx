@@ -1,20 +1,25 @@
 import type { ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { Badge, Button, Field, IconButton, Input, Select } from '@qvanderlinden/ui'
+import { toast, Badge, Button, Field, IconButton, Input, Select } from '@qvanderlinden/ui'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
-import type { CategoryRead, LineRead, PurchaseLineRead, VatSchemeRead } from '../api/types'
+import type { CategoryRead, IsocSchemeRead, LineRead, PurchaseLineRead, VatSchemeRead } from '../api/types'
 import { amountInput, eur, isBadAmount, parseDecimal, parseQuantity, quantityInput } from '../format'
+import { fullDeduction } from './nonDeductible'
 import { reference } from './pieceStatus'
 import type { PieceSide } from './usePieceRefs'
 import { useSavedPick, useSavedText } from './useSavedField'
 
-export type LineField = 'description' | 'unit_price' | 'quantity' | 'category_id' | 'vat_scheme_id'
-type AnyLine = LineRead | Partial<Pick<PurchaseLineRead, 'fixed_asset_id' | 'fixed_asset_number'>>
+export type LineField = 'description' | 'unit_price' | 'quantity' | 'category_id' | 'vat_scheme_id' | 'isoc_scheme_id'
+type AnyLine = LineRead | Partial<Pick<PurchaseLineRead, 'fixed_asset_id' | 'fixed_asset_number' | 'isoc_scheme_id'>>
+
+const INVALID_AMOUNT = 'Montant invalide : il n’a pas été enregistré'
 
 interface LineProps {
   side: PieceSide
   categories: CategoryRead[]
   vatSchemes: VatSchemeRead[]
+  /** The ISOC schemes of a purchase line; a sale line has none. */
+  isocSchemes?: IsocSchemeRead[]
   onPatch(lineId: number, field: LineField, value: string | number): Promise<boolean>
   onRemove(lineId: number): void
   /** Opens the fixed asset that takes a purchase line over. */
@@ -38,6 +43,8 @@ function Line({ line, n, mobile, ...p }: LineProps & { line: LineRead & AnyLine;
     return value === null ? Promise.resolve(true) : p.onPatch(line.id, 'quantity', value)
   })
   const [category, pickCategory] = useSavedPick(line.category_id, (v) => p.onPatch(line.id, 'category_id', v))
+  const isocOf = (l: AnyLine) => ('isoc_scheme_id' in l ? l.isoc_scheme_id : null) ?? fullDeduction(p.isocSchemes ?? [])?.id ?? 0
+  const [isoc, pickIsoc] = useSavedPick(isocOf(line), (v) => p.onPatch(line.id, 'isoc_scheme_id', v))
   const [vat, pickVat] = useSavedPick(line.vat_scheme_id, (v) => p.onPatch(line.id, 'vat_scheme_id', v))
 
   const placeholder = p.side === 'sale' ? 'Ce qui est facturé' : 'Ce qui a été acheté'
@@ -64,11 +71,44 @@ function Line({ line, n, mobile, ...p }: LineProps & { line: LineRead & AnyLine;
       onValueChange={(v) => pickVat(Number(v))}
     />
   )
+  const isocSelect =
+    p.side === 'purchase' ? (
+      <Select
+        size="sm"
+        aria-label="Régime ISOC"
+        options={options(p.isocSchemes ?? [], isocOf(line), (s) => s.label, () => true)}
+        value={String(isoc)}
+        onValueChange={(v) => pickIsoc(Number(v))}
+      />
+    ) : null
+  // An unreadable value is refused on blur: the field says so, a toast too, and the stored value comes back.
+  const priceBad = isBadAmount(price.value)
+  const quantityBad = parseQuantity(quantity.value) === null
   const priceInput = (
-    <Input size="sm" aria-label="Prix unitaire" numeric invalid={isBadAmount(price.value)} {...price} />
+    <Input
+      size="sm"
+      aria-label="Prix unitaire"
+      numeric
+      invalid={priceBad}
+      {...price}
+      onBlur={() => {
+        price.onBlur()
+        if (priceBad) toast(INVALID_AMOUNT, { tone: 'negative' })
+      }}
+    />
   )
   const quantityField = (
-    <Input size="sm" aria-label="Quantité" numeric invalid={parseQuantity(quantity.value) === null} {...quantity} />
+    <Input
+      size="sm"
+      aria-label="Quantité"
+      numeric
+      invalid={quantityBad}
+      {...quantity}
+      onBlur={() => {
+        quantity.onBlur()
+        if (quantityBad) toast(INVALID_AMOUNT, { tone: 'negative' })
+      }}
+    />
   )
   const remove = (
     <IconButton icon={Trash2} size="sm" label="Retirer la ligne" disabled={asset !== null} onClick={() => p.onRemove(line.id)} />
@@ -85,6 +125,7 @@ function Line({ line, n, mobile, ...p }: LineProps & { line: LineRead & AnyLine;
         <Field label="Description">{descriptionInput}</Field>
         <Field label="Catégorie">{categorySelect}</Field>
         <Field label="TVA">{vatSelect}</Field>
+        {isocSelect ? <Field label="Régime ISOC">{isocSelect}</Field> : null}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Prix unitaire">{priceInput}</Field>
           <Field label="Quantité">{quantityField}</Field>
@@ -108,6 +149,7 @@ function Line({ line, n, mobile, ...p }: LineProps & { line: LineRead & AnyLine;
       </TableCell>
       <TableCell>{categorySelect}</TableCell>
       <TableCell>{vatSelect}</TableCell>
+      {p.side === 'purchase' ? <TableCell>{isocSelect}</TableCell> : null}
       <TableCell>{priceInput}</TableCell>
       <TableCell>{quantityField}</TableCell>
       <TableCell className="numeric text-right font-medium text-fg-strong">{eur(line.net)}</TableCell>
@@ -171,13 +213,14 @@ export function LineEditor({
   return (
     <div className="rounded-md border border-line-hairline">
       <div className="overflow-x-auto p-1">
-        <Table className="min-w-190 table-fixed">
+        <Table className={p.side === 'purchase' ? 'min-w-222 table-fixed' : 'min-w-190 table-fixed'}>
           <TableHeader>
             <TableRow>
               <TableHead className="w-8">#</TableHead>
               <TableHead>Description</TableHead>
               <TableHead className="w-40">Catégorie</TableHead>
               <TableHead className="w-32">TVA</TableHead>
+              {p.side === 'purchase' ? <TableHead className="w-32">Régime ISOC</TableHead> : null}
               <TableHead className="w-28 text-right">Prix unitaire</TableHead>
               <TableHead className="w-20 text-right">Qté</TableHead>
               <TableHead className="w-28 text-right">HTVA</TableHead>

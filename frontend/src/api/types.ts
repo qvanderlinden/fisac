@@ -27,6 +27,8 @@ export interface CompanyRead {
   manager_name: string | null
   manager_since: string | null
   manager_paid: boolean
+  /** The date the company was incorporated; null until it is typed. */
+  incorporated_on: string | null
 }
 
 export interface PartnerRead {
@@ -136,6 +138,8 @@ export interface PurchaseLineRead extends LineRead {
   /** The register entry that takes the line over, when there is one. */
   fixed_asset_id: number | null
   fixed_asset_number: number | null
+  /** The ISOC scheme of the line; null reads as the "100 %" scheme. */
+  isoc_scheme_id: number | null
 }
 
 /** Piece reads are unsigned (as typed): `kind` carries the sign. */

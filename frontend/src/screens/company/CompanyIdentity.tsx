@@ -124,6 +124,14 @@ export function CompanyIdentity({
         fromValue={(v) => v as VatRegime}
       />
       <SavedText label="Siège social" field="registered_office" company={company} save={save} />
+      <SavedText
+        label={<InfoLabel info="Une petite société n’a pas de majoration pour absence de versements anticipés pendant ses trois premiers exercices">Date de constitution</InfoLabel>}
+        field="incorporated_on"
+        company={company}
+        save={save}
+        type="date"
+        delay={null}
+      />
     </>
   )
 

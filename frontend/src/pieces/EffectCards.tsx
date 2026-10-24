@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { PurchaseRead, SaleRead, VatRegime } from '../api/types'
 import { eur, formatDate, formatRate } from '../format'
 import { statementFor } from '../statements'
+import { fullDeduction, nonDeductible } from './nonDeductible'
 import { quarterOf, signOf, todayIso } from './piecesList'
 import { reference } from './pieceStatus'
 import type { PieceRefs, PieceSide } from './usePieceRefs'
@@ -59,7 +60,7 @@ export function EffectCards({
 }: {
   piece: SaleRead | PurchaseRead
   side: PieceSide
-  refs: Pick<PieceRefs, 'categories' | 'vatSchemes' | 'paymentMethods' | 'vatRegime' | 'accounts'>
+  refs: Pick<PieceRefs, 'categories' | 'vatSchemes' | 'isocSchemes' | 'paymentMethods' | 'vatRegime' | 'accounts'>
 }) {
   const sign = signOf(piece.kind)
   const money = (c: number) => eur((sign * c) / 100)
@@ -78,6 +79,13 @@ export function EffectCards({
     for (const [id, c] of sumBy(charged.map((l) => ({ key: l.category_id, cents: cents(l.charge) })))) {
       result.push({ label: categoryLabel(id), amount: money(c) })
     }
+    // The part of the charge the ISOC scheme does not deduct; a line a fixed asset takes over
+    // has none here (its disallowed part follows its depreciation).
+    const full = fullDeduction(refs.isocSchemes)
+    const deductibleOf = (id: number | null) =>
+      refs.isocSchemes.find((s) => s.id === (id ?? full?.id))?.deductible_rate ?? '100'
+    const disallowed = charged.reduce((sum, l) => sum + cents(nonDeductible(l.charge, deductibleOf(l.isoc_scheme_id))), 0)
+    if (disallowed !== 0) result.push({ label: 'dont non admis à l’ISOC', amount: money(disallowed) })
     for (const l of lines) {
       if (l.fixed_asset_number !== null) {
         registered.push({ label: `${reference('I', l.fixed_asset_number)} · au registre`, amount: 'son amortissement' })

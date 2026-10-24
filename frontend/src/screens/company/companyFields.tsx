@@ -9,7 +9,7 @@ export type CompanySaveResult = { ok: true } | { ok: false; server: CompanyRead 
 /** Saves one field of the company (a PATCH of that field alone). */
 export type CompanySave = (patch: Partial<CompanyRead>) => Promise<CompanySaveResult>
 
-type TextKey = 'name' | 'bce_number' | 'registered_office' | 'iban' | 'manager_name' | 'manager_since'
+type TextKey = 'name' | 'bce_number' | 'registered_office' | 'iban' | 'manager_name' | 'manager_since' | 'incorporated_on'
 
 /**
  * A text field that saves itself on blur and 500 ms after typing stops. `read` shows a
@@ -27,6 +27,7 @@ export function SavedText({
   ready = () => true,
   error,
   className,
+  delay,
   ...input
 }: {
   label: ReactNode
@@ -38,6 +39,8 @@ export function SavedText({
   ready?(text: string): boolean
   error?(text: string): string | undefined
   className?: string
+  /** Pause before saving while typing; null saves on blur only (a date input reports partial years). */
+  delay?: number | null
 } & Pick<React.ComponentProps<typeof Input>, 'placeholder' | 'type' | 'autoComplete' | 'spellCheck'>) {
   const [text, setText] = useState(read(company[field]))
   const typed = useRef(text)
@@ -51,7 +54,7 @@ export function SavedText({
       typed.current = read(result.server[field])
       setText(typed.current)
     }
-  })
+  }, delay)
 
   const message = edited ? error?.(text) : undefined
   return (
