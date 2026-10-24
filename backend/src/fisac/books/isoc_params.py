@@ -1,7 +1,8 @@
 """Belgian corporate tax (ISOC) legal parameters, per assessment year.
 
-The assessment year (exercice d'imposition) is the calendar year after the fiscal
-year's end. Rates are percentages.
+The assessment year (exercice d'imposition) N covers the fiscal years closed between
+31 December N-1 and 30 December N: the year after the end for a fiscal year closing
+on 31 December, the year of the end otherwise. Rates are percentages.
 
 Sources consulted: Pyxis "VAI exercice d'imposition 2027", Grant Thornton on the
 majoration for insufficient advance payments, Argenta, StarterPass, myfid, and the
@@ -10,7 +11,6 @@ uplift of the base of the majoration and on the threshold; the values below foll
 the 6.75 % of the tax and the "0.5 % of the tax or EUR 80, whichever is higher" rule.
 """
 
-import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -42,6 +42,11 @@ _PARAMS: dict[int, Params] = {
 }
 
 
+def assessment_year(fy_end: date) -> int:
+    """The exercice d'imposition of a fiscal year ending on `fy_end`."""
+    return fy_end.year + 1 if (fy_end.month, fy_end.day) == (12, 31) else fy_end.year
+
+
 def params_for(assessment_year: int) -> tuple[Params, bool]:
     """The parameters of the year, or of the latest known one (`True`: fallback)."""
     if assessment_year in _PARAMS:
@@ -64,6 +69,5 @@ def due_dates(fy_start: date) -> list[date]:
     out = []
     for offset, dom in ((3, 10), (6, 10), (9, 10), (11, 20)):
         first = _add_months(fy_start.replace(day=1), offset)
-        assert dom <= calendar.monthrange(first.year, first.month)[1]
         out.append(_next_monday_if_weekend(first.replace(day=dom)))
     return out

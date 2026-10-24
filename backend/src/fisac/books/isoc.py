@@ -115,6 +115,9 @@ def compute(
 
     base = max(_ZERO, cents(before_tax + disallowed_total))
     reduced = all(conditions)
+    # Each bracket's tax is rounded to the cent on its own and the two are then added, so the
+    # tax shown is the sum of the two figures the screen prints (it can differ by a cent from
+    # rounding the unrounded sum).
     if reduced:
         tax_reduced = cents(min(base, params.reduced_ceiling) * params.reduced_rate / _HUNDRED)
         tax_normal = cents(max(_ZERO, base - params.reduced_ceiling) * params.normal_rate / _HUNDRED)

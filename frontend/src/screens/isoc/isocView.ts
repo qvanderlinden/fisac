@@ -8,6 +8,21 @@ export function balanceLabel(balance: string): 'Solde à payer' | 'Excédent de 
   return cents(balance) < 0 ? 'Excédent de versements' : 'Solde à payer'
 }
 
+/** The base before its clamp is negative: the base is brought to zero. */
+const isClamped = (isoc: IsocRead) => cents(isoc.before_tax) + cents(isoc.disallowed.total) < 0
+
+/** The base imposable tile's footnote: the disallowed part, or that a loss brought it to zero. */
+export function baseFootnote(isoc: IsocRead): string {
+  return isClamped(isoc)
+    ? `ramenée à zéro · perte de ${eur(-(cents(isoc.before_tax) + cents(isoc.disallowed.total)) / 100)}`
+    : `dont ${eur(isoc.disallowed.total)} de dépenses non admises`
+}
+
+/** The balance tile's footnote: what the balance is made of (the inventory screen is still to come). */
+export function balanceFootnote(balance: string): string {
+  return cents(balance) < 0 ? 'versements au-delà de l’impôt estimé' : 'impôt estimé moins les versements payés'
+}
+
 export type Condition = 'small_company' | 'minimum_pay' | 'shares_owned'
 
 /** The three conditions of the reduced rate, each worded as met (ticked = met). */
@@ -69,7 +84,7 @@ export function computationRows(isoc: IsocRead): ComputationRow[] {
           }
         })
       : [{ key: 'disallowed', label: 'Dépenses non admises', meta: 'aucune', amount: isoc.disallowed.total }]
-  const clamped = cents(isoc.before_tax) + cents(isoc.disallowed.total) < 0
+  const clamped = isClamped(isoc)
   const taxRows: ComputationRow[] = isoc.reduced
     ? [
         {

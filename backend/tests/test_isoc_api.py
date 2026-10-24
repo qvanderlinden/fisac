@@ -160,3 +160,20 @@ async def test_a_line_without_isoc_scheme_is_fully_deductible(client):
     assert isoc["before_tax"] == "-1000.00"
     assert isoc["disallowed"]["total"] == "0.00"
     assert all(isoc["disallowed"][k]["lines"] == [] for k in ("restaurant", "car", "other"))
+
+
+async def test_assessment_year_of_a_calendar_year(client):
+    fy = (await _post(client, "/api/fiscal-years", {}))["id"]  # 2026-01-01..2026-12-31
+    isoc = (await client.get(f"/api/fiscal-years/{fy}/isoc")).json()
+    assert (isoc["assessment_year"], isoc["parameters_fallback"]) == (2027, False)
+
+
+async def test_assessment_year_of_a_year_closing_in_june(client, monkeypatch):
+    for module in (pieces, fiscal_years):
+        monkeypatch.setattr(module, "today", lambda: date(2026, 3, 1))
+    await _patch(client, "/api/company", {"fiscal_year_start_month": 7})
+    year = await _post(client, "/api/fiscal-years", {})
+    assert (year["start_date"], year["end_date"]) == ("2025-07-01", "2026-06-30")
+    isoc = (await client.get(f"/api/fiscal-years/{year['id']}/isoc")).json()
+    # closed on 30/06/2026: assessment year 2026, whose parameters are not defined
+    assert (isoc["assessment_year"], isoc["parameters_fallback"]) == (2026, True)

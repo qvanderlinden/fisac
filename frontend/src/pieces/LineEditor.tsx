@@ -76,9 +76,15 @@ function Line({ line, n, mobile, ...p }: LineProps & { line: LineRead & AnyLine;
       <Select
         size="sm"
         aria-label="Régime ISOC"
-        options={options(p.isocSchemes ?? [], isocOf(line), (s) => s.label, () => true)}
+        options={[
+          // No scheme deducting everything to show for a line without one: it still reads as 100 %.
+          ...(isocOf(line) === 0 ? [{ value: '0', label: '100 %' }] : []),
+          ...options(p.isocSchemes ?? [], isocOf(line), (s) => s.label, () => true),
+        ]}
         value={String(isoc)}
-        onValueChange={(v) => pickIsoc(Number(v))}
+        onValueChange={(v) => {
+          if (v !== '0') pickIsoc(Number(v))
+        }}
       />
     ) : null
   // An unreadable value is refused on blur: the field says so, a toast too, and the stored value comes back.

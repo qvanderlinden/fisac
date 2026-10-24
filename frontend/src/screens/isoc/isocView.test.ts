@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { IsocPrepaymentView, IsocRead } from '../../api/types'
 import { eur } from '../../format'
-import { balanceLabel, bonificationText, computationRows, conditionLabels, lineTarget, paidBody, prepaymentState } from './isocView'
+import { balanceFootnote, balanceLabel, baseFootnote, bonificationText, computationRows, conditionLabels, lineTarget, paidBody, prepaymentState } from './isocView'
 
 const rubric = (total: string, lines: IsocRead['disallowed']['restaurant']['lines'] = []) => ({ total, lines })
 
@@ -127,5 +127,22 @@ describe('bonificationText', () => {
   })
   it('shows a dash when unpaid', () => {
     expect(bonificationText(view({ paid: false, quarter: null, bonification_rate: null, bonification: '0.00' }))).toBe('—')
+  })
+})
+
+describe('baseFootnote', () => {
+  it('names the disallowed part of the base', () => {
+    expect(baseFootnote(isoc())).toBe(`dont ${eur('28.47')} de dépenses non admises`)
+  })
+  it('says a loss brought the base to zero', () => {
+    const loss = isoc({ before_tax: '-1467.20', taxable_base: '0.00' })
+    expect(baseFootnote(loss)).toBe(`ramenée à zéro · perte de ${eur('1438.73')}`)
+  })
+})
+
+describe('balanceFootnote', () => {
+  it('never mentions the inventory', () => {
+    expect(balanceFootnote('11975.63')).toBe('impôt estimé moins les versements payés')
+    expect(balanceFootnote('-25.00')).toBe('versements au-delà de l’impôt estimé')
   })
 })

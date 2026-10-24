@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { Badge, Callout, Card, Checkbox, Field, Input, Select, toast } from '@qvanderlinden/ui'
+import { Link } from 'react-router'
+import { Badge, Button, Callout, Card, Checkbox, Field, Input, Select, toast } from '@qvanderlinden/ui'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
 import { api } from '../../api/client'
 import type { IsocPrepaymentRead, IsocPrepaymentView, IsocRead, PaymentMethodRead } from '../../api/types'
@@ -254,6 +255,39 @@ export function IsocPrepayments({
         </TableFooter>
       </Table>
       <p className="m-0 border-t border-line-hairline px-4 py-3 text-xs text-fg-muted">{PREPAYMENT_NOTE}</p>
+    </Card>
+  )
+}
+
+/**
+ * "Versements anticipés" when they cannot be typed: every payment method is a card, and a VA
+ * is paid from an account. The figures of the screen still read the VAs as unpaid zero ones.
+ */
+export function PrepaymentsUnavailable({ mobile }: { mobile: boolean }) {
+  const note = (
+    <Callout tone="warning" title="Aucun moyen de paiement pour les versements">
+      <span className="flex flex-col items-start gap-2">
+        <span>
+          Un versement anticipé se paie depuis un compte, pas par carte : ajoutez un moyen de paiement autre que la carte
+          (un virement, par exemple) pour saisir les versements. En attendant, l’estimation les compte comme non payés.
+        </span>
+        <Button asChild variant="link" size="sm">
+          <Link to="/moyens-paiement">Ouvrir les moyens de paiement</Link>
+        </Button>
+      </span>
+    </Callout>
+  )
+  if (mobile) {
+    return (
+      <section aria-label="Versements anticipés" className="flex flex-col gap-3">
+        <h2 className="m-0 type-eyebrow text-fg-muted">versements anticipés</h2>
+        {note}
+      </section>
+    )
+  }
+  return (
+    <Card title="Versements anticipés" subtitle="Chaque versement payé réduit le solde à payer et la majoration">
+      {note}
     </Card>
   )
 }

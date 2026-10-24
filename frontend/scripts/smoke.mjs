@@ -224,10 +224,15 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await settle()
     await va1.getByRole('checkbox', { name: 'Payé' }).click()
     await settle()
-    await page.waitForTimeout(300)
     const years = await (await page.request.get(`${BASE}/api/fiscal-years`)).json()
     const fy = years.find((y) => y.end_date.startsWith(String(YEAR)))
-    const isoc = await (await page.request.get(`${BASE}/api/fiscal-years/${fy.id}/isoc`)).json()
+    // The tick saves through the serial queue: poll the API until the payment has landed.
+    const readIsoc = async () => (await page.request.get(`${BASE}/api/fiscal-years/${fy.id}/isoc`)).json()
+    let isoc = await readIsoc()
+    for (let tries = 0; Number(isoc.paid_total) !== 2000 && tries < 50; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      isoc = await readIsoc()
+    }
     const va = isoc.prepayments.find((p) => p.number === 1)
     check(va.paid && Number(va.amount) === 2000 && Number(isoc.paid_total) === 2000, 'isoc: VA1 2 000,00 stored paid')
     check(Number(isoc.disallowed.restaurant.total) === 347.2, 'isoc: restaurant disallowed 31 % of 1 120,00 = 347,20')
@@ -244,9 +249,17 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     )
     check(isocText.includes('VA1') && isocText.includes('2 000,00') && isocText.includes('347,20'), 'isoc: VA1 2 000,00 and the disallowed 347,20 are shown')
 
-    // The paid VA is a movement of the financial journal.
+    // The paid VA is a movement of the financial journal of its payment method's account:
+    // found through the API, then that account's tab is opened (it need not be the default one).
+    const journals = await (await page.request.get(`${BASE}/api/fiscal-years/${fy.id}/journals`)).json()
+    const vaJournal = journals.find((j) => j.movements.some((m) => m.reference === 'VA1 · ISOC'))
+    check(vaJournal !== undefined, 'journal: the API has the VA1 · ISOC movement')
     await page.goto(`${BASE}/journaux`)
     await settle()
+    if (vaJournal) {
+      await page.getByRole('tab', { name: new RegExp(`^${vaJournal.account.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }).click()
+      await settle()
+    }
     check(plain(await page.locator('body').innerText()).includes('VA1 · ISOC'), 'journal: the VA1 · ISOC movement')
   }
 

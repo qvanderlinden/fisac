@@ -70,14 +70,16 @@ async def read_journals(year_id: int, session: AsyncSession = Depends(get_sessio
                 amount, account_of[method_id], read["status"] == "paid",
                 method_id if method_id in is_card else None,
             ))
+    # A paid VA on its payment date, an unpaid one (planned) on its due date, even if a
+    # payment date was typed. VAs are windowed by that cash date, not by their fiscal year,
+    # on purpose: a journal is the account's cash, so a VA paid in this year's dates shows
+    # here whichever fiscal year it belongs to.
     prepayments = [
-        journals.Prepayment(
-            p.number, p.payment_date or p.due_date, p.amount, account_of[p.payment_method_id], p.paid
-        )
+        journals.Prepayment(p.number, day, p.amount, account_of[p.payment_method_id], p.paid)
         for p in await session.scalars(
             select(IsocPrepayment).where(IsocPrepayment.amount > 0)
         )
-        if start <= (p.payment_date or p.due_date) <= end
+        if start <= (day := p.payment_date if p.paid and p.payment_date else p.due_date) <= end
     ]
     built = journals.build(accounts, cash, cards, start, end, pieces.today(), prepayments)
     return [

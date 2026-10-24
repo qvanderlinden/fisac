@@ -37,7 +37,8 @@ ISOC slice in short:
   payments (VA1-VA4) reduce the balance to pay, not the result; a paid one is
   a journal movement.
 - The legal parameters are in `backend/src/fisac/books/isoc_params.py`, one
-  `Params` entry per assessment year (the year after the fiscal year's end).
+  `Params` entry per assessment year (a fiscal year closing between 31/12/N−1
+  and 30/12/N belongs to assessment year N).
   To add a year, add its entry to `_PARAMS`; a missing year falls back to the
   latest one and the ISOC read flags it (`parameters_fallback`).
 - Routes: `/fiscal-years/{id}/isoc`, `/fiscal-years/{id}/isoc-prepayments`,

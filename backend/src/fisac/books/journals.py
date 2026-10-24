@@ -5,6 +5,7 @@ signed from the account's side, money in > 0.
 """
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -112,7 +113,7 @@ def build(
     start: date,
     end: date,
     today: date,
-    prepayments: list[Prepayment] = (),
+    prepayments: Sequence[Prepayment] = (),
 ) -> list[Journal]:
     """`pieces` may reach before `start`: a card purchase paid late in the previous
     year can have its statement paid in this one. Only movements within [start, end] stay."""

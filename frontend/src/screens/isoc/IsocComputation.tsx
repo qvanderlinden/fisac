@@ -3,7 +3,7 @@ import { Card, StatCard } from '@qvanderlinden/ui'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qvanderlinden/ui/primitives'
 import type { IsocRead } from '../../api/types'
 import { eur, formatRate } from '../../format'
-import { balanceLabel, computationRows, type ComputationRow } from './isocView'
+import { balanceFootnote, balanceLabel, baseFootnote, computationRows, type ComputationRow } from './isocView'
 
 export interface ComputationProps {
   isoc: IsocRead
@@ -26,7 +26,7 @@ export function IsocTiles({ isoc, mobile }: { isoc: IsocRead; mobile: boolean })
       label={label.toLowerCase()}
       value={Number(isoc.balance)}
       format="eur"
-      footnote={label === 'Solde à payer' ? 'dette à l’inventaire' : 'créance à l’inventaire'}
+      footnote={balanceFootnote(isoc.balance)}
     />
   )
   const base = (
@@ -34,7 +34,7 @@ export function IsocTiles({ isoc, mobile }: { isoc: IsocRead; mobile: boolean })
       label="base imposable"
       value={Number(isoc.taxable_base)}
       format="eur"
-      footnote={`dont ${eur(isoc.disallowed.total)} de dépenses non admises`}
+      footnote={baseFootnote(isoc)}
     />
   )
   const tax = <StatCard label="impôt estimé" value={Number(isoc.estimated_tax)} format="eur" footnote={taxHint} />

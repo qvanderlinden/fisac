@@ -1,6 +1,6 @@
 from datetime import date
 
-from fisac.books.isoc_params import due_dates, params_for
+from fisac.books.isoc_params import assessment_year, due_dates, params_for
 
 
 def test_due_dates_2026():
@@ -31,3 +31,11 @@ def test_params_2027():
     p, _ = params_for(2027)
     assert p.assessment_year == 2027
     assert p.bonifications[0] > p.bonifications[3]
+
+
+def test_assessment_year():
+    # closed between 31/12/N-1 and 30/12/N: assessment year N
+    assert assessment_year(date(2026, 12, 31)) == 2027
+    assert assessment_year(date(2026, 6, 30)) == 2026
+    assert assessment_year(date(2026, 12, 30)) == 2026
+    assert assessment_year(date(2025, 12, 31)) == 2026

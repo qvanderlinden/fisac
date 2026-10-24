@@ -61,8 +61,11 @@ minimum tax rules not listed here, filing the return.
 
 ## Legal parameters — `books/isoc_params.py`
 
-One frozen dataclass per assessment year (`exercice d'imposition` = the
-calendar year after the fiscal year's end), plus a lookup that falls back to
+One frozen dataclass per assessment year (`exercice d'imposition` N covers
+the fiscal years closed between 31 December N−1 and 30 December N: the
+calendar year after the fiscal year's end when it closes on 31 December, the
+year of its end otherwise — a year closing on 30 June 2026 is assessment year
+2026), plus a lookup that falls back to
 the latest known year and says so (`fallback: True`, shown on screen).
 
 Assessment year 2027 (income 2026):

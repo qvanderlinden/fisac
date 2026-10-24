@@ -52,7 +52,7 @@ class IsocYear:
     disallowed: list[isoc.DisallowedLine]
     conditions: tuple[bool, bool, bool]
     prepayments: list[PrepaymentView]
-    assessment_year: int  # the calendar year after the fiscal year's end
+    assessment_year: int  # isoc_params.assessment_year of the fiscal year's end
     params: isoc_params.Params  # that year's, or the latest known (fallback)
     fallback: bool
     incorporated_on: date | None
@@ -106,7 +106,8 @@ async def load(session: AsyncSession, fiscal_year: FiscalYear) -> IsocYear:
     company = await session.get(Company, 1)
     start_month = company.fiscal_year_start_month if company else 1
     incorporated_on = company.incorporated_on if company else None
-    params, fallback = isoc_params.params_for(end.year + 1)
+    assessment_year = isoc_params.assessment_year(end)
+    params, fallback = isoc_params.params_for(assessment_year)
     due = isoc_params.due_dates(start)
     prepayments = await _prepayments(session, year_id, due, params)
     schemes = await _schemes(session)
@@ -160,4 +161,6 @@ async def load(session: AsyncSession, fiscal_year: FiscalYear) -> IsocYear:
     exempt = isoc.is_exempt(conditions[0], incorporated_on, start, start_month)
     inputs = [isoc.Prepayment(p.number, p.amount, p.paid, p.payment_date) for p in prepayments]
     computed = isoc.compute(book.result, disallowed, conditions, inputs, due, params, exempt)
-    return IsocYear(book, disallowed, conditions, prepayments, end.year + 1, params, fallback, incorporated_on, computed)
+    return IsocYear(
+        book, disallowed, conditions, prepayments, assessment_year, params, fallback, incorporated_on, computed
+    )

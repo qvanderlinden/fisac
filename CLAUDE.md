@@ -11,7 +11,7 @@ corporate tax (ISOC), the result and the opening and closing inventory.
 The app was rebuilt from the "fisac - Compta simplifiée" design canvas. The data
 model is done (`backend/src/fisac/models.py`, migrations 0005 and 0006, spec
 `docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`). Slice A
-("socle", spec `docs/superpowers/specs/2026-10-23-tranche-a-socle-design.md`)
+("socle", spec `docs/superpowers/specs/2026-10-23-tranche-a-socle-design.md`),
 slice B ("pièces", spec
 `docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`) and the ISOC
 slice (corporate tax, spec
@@ -68,7 +68,10 @@ ISOC slice rules to keep in mind:
   journal movement (`kind: "isoc_prepayment"`, reference `VA1 · ISOC`, no
   piece) that opens the ISOC screen, and it reduces the balance to pay.
 - The legal parameters live in `backend/src/fisac/books/isoc_params.py`,
-  keyed by assessment year (the calendar year after the fiscal year's end):
+  keyed by assessment year (`isoc_params.assessment_year`: a fiscal year
+  closing between 31/12/N−1 and 30/12/N belongs to assessment year N, so
+  the year after the end when it closes on 31 December, the end's year
+  otherwise):
   rates, ceiling, majoration rate, the four bonifications and the threshold.
   To add a year, add a `Params` entry to `_PARAMS`; a year with no entry
   falls back to the latest one and the ISOC read says so

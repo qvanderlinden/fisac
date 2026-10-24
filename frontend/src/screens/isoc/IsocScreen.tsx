@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Badge, Callout, toast } from '@qvanderlinden/ui'
 import type { IsocPrepaymentRead, IsocRead, IsocRubric, PaymentMethodRead } from '../../api/types'
-import { messageOf } from '../../errors'
+import { isApiError, messageOf } from '../../errors'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useResource } from '../../hooks/useResource'
 import { useFiscalYear } from '../../shell/FiscalYearContext'
@@ -11,7 +11,7 @@ import { DisallowedDetail } from './DisallowedDetail'
 import { IsocCards } from './IsocCards'
 import { IsocComputation, IsocTiles } from './IsocComputation'
 import { IsocConditions } from './IsocConditions'
-import { IsocMajoration, IsocPrepayments, usePrepaymentEditor } from './IsocPrepayments'
+import { IsocMajoration, IsocPrepayments, PrepaymentsUnavailable, usePrepaymentEditor } from './IsocPrepayments'
 import type { ComputationRow, LineTarget } from './isocView'
 
 /**
@@ -37,9 +37,14 @@ export function IsocScreen() {
     reloadIsoc,
   )
 
+  // No payment method but cards: the VA rows cannot be created (422 on payment_method_id). The
+  // computation still shows; the VA card says what to add instead of the editable table.
+  const noMethod =
+    prepayments.data === undefined && isApiError(prepayments.error) && prepayments.error.status === 422 &&
+    'payment_method_id' in prepayments.error.fields
   // A failed reload keeps the figures on screen and says so; the page-wide error is for a first load.
-  const loaded = isoc.data !== undefined && prepayments.data !== undefined
-  const error = isoc.error ?? prepayments.error
+  const loaded = isoc.data !== undefined && (prepayments.data !== undefined || noMethod)
+  const error = isoc.error ?? (noMethod ? undefined : prepayments.error)
   useEffect(() => {
     if (error && loaded) toast(messageOf(error), { tone: 'negative' })
   }, [error, loaded])
@@ -51,11 +56,11 @@ export function IsocScreen() {
       </Callout>
     )
   }
-  if (!isoc.data || !prepayments.data || !current) return <p className="type-body-sm text-fg-muted">Chargement…</p>
+  if (!isoc.data || !loaded || !current) return <p className="type-body-sm text-fg-muted">Chargement…</p>
 
   const data = isoc.data
   const year = current.end_date.slice(0, 4)
-  const rows = [...prepayments.data].sort((a, b) => a.number - b.number)
+  const rows = prepayments.data ? [...prepayments.data].sort((a, b) => a.number - b.number) : null
 
   function open(row: ComputationRow) {
     if (row.result) navigate('/resultat')
@@ -72,7 +77,11 @@ export function IsocScreen() {
 
   const computation = { isoc: data, onOpen: open }
   const conditions = <IsocConditions isoc={data} yearId={current.id} onSaved={reloadIsoc} />
-  const va = <IsocPrepayments rows={rows} isoc={data} methods={methods.data ?? []} editor={editor} mobile={mobile} />
+  const va = rows ? (
+    <IsocPrepayments rows={rows} isoc={data} methods={methods.data ?? []} editor={editor} mobile={mobile} />
+  ) : (
+    <PrepaymentsUnavailable mobile={mobile} />
+  )
   const majoration = <IsocMajoration isoc={data} mobile={mobile} />
 
   return (

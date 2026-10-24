@@ -116,3 +116,7 @@ async def test_journal_movement(client, session, monkeypatch):
     await client.patch(f"/api/isoc-prepayments/{pid}", json={"paid": True, "payment_date": "2026-04-08"})
     (m,) = movement((await client.get(f"/api/fiscal-years/{fy}/journals")).json())
     assert m["planned"] is False and m["date"] == "2026-04-08"
+    # unpaid again: planned on its due date, the typed payment date notwithstanding
+    await client.patch(f"/api/isoc-prepayments/{pid}", json={"paid": False})
+    (m,) = movement((await client.get(f"/api/fiscal-years/{fy}/journals")).json())
+    assert m["planned"] is True and m["date"] == "2026-04-10"

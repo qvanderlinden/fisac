@@ -45,10 +45,11 @@ export function DisallowedDetail({
         La part non déductible de chaque ligne s’ajoute au résultat pour former la base imposable.
       </Callout>
       <ul className="m-0 flex list-none flex-col divide-y divide-line-hairline rounded-lg border border-line-hairline p-0">
-        {lines.map((line) => {
+        {lines.map((line, i) => {
           const target = lineTarget(line)
+          // Two identical lines of one purchase share reference, date and amount: the position tells them apart.
           return (
-            <li key={`${line.reference}-${line.date}-${line.amount}`}>
+            <li key={`${line.reference}-${i}`}>
               {target ? (
                 <button
                   type="button"
