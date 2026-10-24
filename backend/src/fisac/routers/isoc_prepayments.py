@@ -23,11 +23,10 @@ async def _rows(session: AsyncSession, year_id: int) -> list[IsocPrepayment]:
     return list(await session.scalars(query))
 
 
-@router.get("/fiscal-years/{year_id}/isoc-prepayments", response_model=list[IsocPrepaymentRead])
-async def read_isoc_prepayments(year_id: int, session: AsyncSession = Depends(get_session)):
-    year = await session.get(FiscalYear, year_id)
-    if year is None:
-        raise not_found("Exercice")
+async def ensure_prepayments(session: AsyncSession, year: FiscalYear) -> list[IsocPrepayment]:
+    """The year's four advance payments, created on first read (due dates of the
+    rule, amount 0, the first non-card method, unpaid)."""
+    year_id, start = year.id, year.start_date
     rows = await _rows(session, year_id)
     if len(rows) < 4:
         method = await session.scalar(
@@ -41,7 +40,7 @@ async def read_isoc_prepayments(year_id: int, session: AsyncSession = Depends(ge
                 "payment_method_id",
                 "Aucun moyen de paiement autre que la carte : ajoutez-en un pour les versements anticipés",
             )
-        dates = isoc_params.due_dates(year.start_date)
+        dates = isoc_params.due_dates(start)
         # ON CONFLICT DO NOTHING: two first reads at once both answer
         await session.execute(
             pg_insert(IsocPrepayment)
@@ -54,6 +53,14 @@ async def read_isoc_prepayments(year_id: int, session: AsyncSession = Depends(ge
         await commit(session)
         rows = await _rows(session, year_id)
     return rows
+
+
+@router.get("/fiscal-years/{year_id}/isoc-prepayments", response_model=list[IsocPrepaymentRead])
+async def read_isoc_prepayments(year_id: int, session: AsyncSession = Depends(get_session)):
+    year = await session.get(FiscalYear, year_id)
+    if year is None:
+        raise not_found("Exercice")
+    return await ensure_prepayments(session, year)
 
 
 @router.patch("/isoc-prepayments/{prepayment_id}", response_model=IsocPrepaymentRead)

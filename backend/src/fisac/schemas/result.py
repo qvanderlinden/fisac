@@ -40,4 +40,7 @@ class ResultRead(BaseModel):
     revenue: ResultGroupRead
     charges: ResultGroupRead
     depreciation: ResultDepreciationRead
-    result: Decimal
+    result: Decimal  # before tax
+    estimated_tax: Decimal  # tax + majoration, as the ISOC read
+    majoration: Decimal
+    after_tax: Decimal

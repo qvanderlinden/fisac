@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from fisac.books.isoc import DisallowedLine, Prepayment, compute, disallowed_part, is_exempt
+from fisac.books.isoc import DisallowedLine, Prepayment, attribute, compute, disallowed_part, is_exempt
 from fisac.books.isoc_params import due_dates, params_for
 from fisac.models import IsocRubric
 
@@ -123,3 +123,13 @@ def test_disallowed_adds_to_base():
 def test_after_tax():
     r = compute(Decimal("50000"), [], OK, [], due, P, False)
     assert (r.estimated_tax, r.after_tax) == (Decimal("10675.00"), Decimal("39325.00"))
+
+
+def test_attribute_each_prepayment():
+    assert attribute(Prepayment(1, Decimal("1000"), True, date(2026, 4, 10)), due, P) == (
+        1, Decimal("9"), Decimal("90.00"))
+    assert attribute(Prepayment(3, Decimal("1000"), True, date(2026, 10, 13)), due, P) == (
+        4, Decimal("4.5"), Decimal("45.00"))
+    assert attribute(Prepayment(4, Decimal("1000"), True, date(2026, 12, 22)), due, P) == (
+        None, None, Decimal("0.00"))
+    assert attribute(Prepayment(2, Decimal("1000"), False, None), due, P) == (None, None, Decimal("0.00"))

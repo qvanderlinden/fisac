@@ -63,7 +63,10 @@ def is_exempt(
     small_company: bool, incorporated_on: date | None, fy_start: date, start_month: int
 ) -> bool:
     """A small company in its first three fiscal years, the one containing
-    `incorporated_on` being the first."""
+    `incorporated_on` being the first.
+
+    Years are counted as 12-month spans from that first year's start, so a longer
+    (or shorter) first fiscal year makes the count approximate."""
     if not small_company or incorporated_on is None:
         return False
     first_start, _ = fiscal_year_of(incorporated_on, start_month)
@@ -77,6 +80,21 @@ def _quarter(payment_date: date, due: list[date]) -> int | None:
         if payment_date <= d:
             return i
     return None
+
+
+def attribute(
+    prepayment: Prepayment, due: list[date], params: Params
+) -> tuple[int | None, Decimal | None, Decimal]:
+    """The quarter a prepayment counts for, that quarter's rate and its bonification.
+
+    Unpaid, undated or paid after the fourth due date: no quarter, no rate, 0.00."""
+    if not prepayment.paid or prepayment.payment_date is None:
+        return None, None, _ZERO
+    quarter = _quarter(prepayment.payment_date, due)
+    if quarter is None:
+        return None, None, _ZERO
+    rate = params.bonifications[quarter - 1]
+    return quarter, rate, cents(prepayment.amount * rate / _HUNDRED)
 
 
 def compute(
@@ -109,9 +127,8 @@ def compute(
         if not p.paid:
             continue
         paid_total += p.amount
-        quarter = _quarter(p.payment_date, due) if p.payment_date is not None else None
-        rate = params.bonifications[quarter - 1] if quarter is not None else Decimal(0)
-        bonifications.append((p.number, quarter, cents(p.amount * rate / _HUNDRED)))
+        quarter, _, bonification = attribute(p, due, params)
+        bonifications.append((p.number, quarter, bonification))
     bonification_total = sum((b[2] for b in bonifications), _ZERO)
 
     majoration_gross = cents(tax * params.majoration_rate / _HUNDRED)
