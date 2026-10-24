@@ -46,10 +46,12 @@ def jwks_url(key):
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
+            # /html stands for a captive page or an egress proxy's error page.
+            html = self.path == "/html"
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "text/html" if html else "application/json")
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(b"<html>blocked</html>" if html else body)
 
         def log_message(self, *args):
             pass
@@ -134,12 +136,33 @@ async def test_unsigned_or_hs256_token_is_refused(client, key):
         assert r.status_code == 401, value
 
 
-async def test_unreachable_jwks_is_401(client, token, monkeypatch):
+async def test_unreachable_jwks_is_503(client, token, monkeypatch):
+    # Not a 401: the session is fine, the frontend must show the error
+    # rather than send the browser to sign in again (a loop).
     # Nothing listens on port 9 of localhost.
     monkeypatch.setattr(settings, "google_jwks_url", "http://127.0.0.1:9/certs")
     auth._jwks_client.cache_clear()
     r = await client.get("/api/company", headers=bearer(token()))
+    assert r.status_code == 503
+    assert r.json()["detail"] == "Les clés de Google sont injoignables, réessayez dans un instant"
+
+
+async def test_jwks_not_json_is_503(client, token, monkeypatch, jwks_url):
+    monkeypatch.setattr(settings, "google_jwks_url", jwks_url.replace("/certs", "/html"))
+    auth._jwks_client.cache_clear()
+    r = await client.get("/api/company", headers=bearer(token()))
+    assert r.status_code == 503
+
+
+async def test_token_without_kid_is_401(client, key):
+    claims = {**CLAIMS, "exp": int(time.time()) + 3600}
+    value = jwt.encode(claims, key, algorithm="RS256")
+    r = await client.get("/api/company", headers=bearer(value))
     assert r.status_code == 401
+
+
+def test_jwks_client_times_out_quickly():
+    assert auth._jwks_client("https://example.com/certs").timeout == 5
 
 
 async def test_valid_token_reaches_a_route(client, token):

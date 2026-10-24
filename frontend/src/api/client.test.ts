@@ -40,6 +40,11 @@ describe('request on a 401', () => {
     const url = new URL(href)
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"Authentification requise"}', { status })))
     vi.stubGlobal('location', { href, hostname: url.hostname, origin: url.origin, assign })
+    const stored = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => stored.get(k) ?? null,
+      setItem: (k: string, v: string) => void stored.set(k, v),
+    })
     return assign
   }
 
@@ -54,6 +59,15 @@ describe('request on a 401', () => {
     expect(assign).toHaveBeenCalledWith(
       'https://auth.quentinvanderlinden.dev/oauth2/start?rd=https%3A%2F%2Ffisac.quentinvanderlinden.dev%2Fventes',
     )
+  })
+
+  it('does not loop: a second 401 within a minute throws HttpError', async () => {
+    // The proxy accepts the session but the API refuses it (another client
+    // ID, a clock off): signing in again would bring the same 401 forever.
+    const assign = stub(401, 'https://fisac.quentinvanderlinden.dev/ventes')
+    expect(await settle(api.get('/company'))).toBe(PENDING)
+    await expect(api.get('/company')).rejects.toMatchObject({ name: 'HttpError', status: 401 })
+    expect(assign).toHaveBeenCalledOnce()
   })
 
   it('throws HttpError when there is no auth origin', async () => {

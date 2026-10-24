@@ -54,6 +54,25 @@ export function toApiError(status: number, statusText: string, body: string): Ap
   }
 }
 
+const SIGN_IN_AT = 'fisac.signInAt'
+
+/**
+ * Whether the browser was sent to sign in less than a minute ago; records
+ * this attempt otherwise. A 401 right after signing in means the API refuses
+ * a session the sign-in service accepts (another client ID, a clock off):
+ * sending the browser back would loop, so the error is shown instead.
+ */
+function signInJustTried(now: number): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(SIGN_IN_AT))
+    if (now - last < 60_000) return true
+    sessionStorage.setItem(SIGN_IN_AT, String(now))
+  } catch {
+    // No storage (private window): no guard, the redirect still happens.
+  }
+  return false
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
@@ -65,7 +84,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // navigation must leave this origin, since the service worker answers a
     // reload from its cache without asking the server.
     const url = signInUrl(location.href)
-    if (url) {
+    if (url && !signInJustTried(Date.now())) {
       location.assign(url)
       return new Promise<never>(() => {})
     }

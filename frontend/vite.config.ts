@@ -9,6 +9,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Behind the sign-in service: without credentials the browser's manifest
+      // request gets the redirect to Google and the app is not installable.
+      useCredentials: true,
       devOptions: { enabled: true },
       manifest: {
         name: 'fisac',

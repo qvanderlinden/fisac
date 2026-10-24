@@ -37,7 +37,8 @@ DEV_USER = User(email="dev@localhost", name="Dev", given_name="Dev")
 @cache
 def _jwks_client(url: str) -> jwt.PyJWKClient:
     # Keeps the keys and fetches them again when a token names an unknown kid.
-    return jwt.PyJWKClient(url)
+    # A short timeout: requests wait on the fetch behind the client's lock.
+    return jwt.PyJWKClient(url, timeout=5)
 
 
 def check_settings(s: Settings) -> None:
@@ -58,6 +59,14 @@ def current_user(authorization: str | None = Header(default=None)) -> User:
         raise ApiError(401, "Authentification requise")
     try:
         key = _jwks_client(settings.google_jwks_url).get_signing_key_from_jwt(token)
+    # Google's keys out of reach (or a page that is not JSON in their place):
+    # a 503, not a 401, which would send the browser to sign in again for
+    # nothing, round and round.
+    except (jwt.PyJWKClientConnectionError, ValueError) as exc:
+        raise ApiError(503, "Les clés de Google sont injoignables, réessayez dans un instant") from exc
+    except jwt.PyJWTError as exc:
+        raise ApiError(401, "Session invalide ou expirée") from exc
+    try:
         claims = jwt.decode(
             token,
             key,
