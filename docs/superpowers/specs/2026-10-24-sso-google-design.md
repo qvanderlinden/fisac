@@ -77,8 +77,9 @@ environment variables and never sit in the repository:
 
 `emails.txt` is mounted read-only into the container. Adding or removing
 someone is a commit and a redeploy in Coolify; sessions live in the cookie,
-so a redeploy signs nobody out. A removed user keeps access until their
-current ID token expires (at most an hour, the next refresh is refused).
+so a redeploy signs nobody out. oauth2-proxy checks the session's e-mail
+against the list on every request, so a removed user loses access as soon as
+the new list is deployed.
 
 ### oauth2-proxy configuration
 
