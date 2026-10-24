@@ -42,7 +42,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: 'taxes',
     items: [
       { path: '/tva', label: 'tva', icon: Percent },
-      { path: null, label: 'isoc', icon: Landmark },
+      { path: '/isoc', label: 'isoc', icon: Landmark },
     ],
   },
   {

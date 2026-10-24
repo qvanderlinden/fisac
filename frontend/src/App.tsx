@@ -6,6 +6,7 @@ import { VatSchemesScreen } from './screens/vat-schemes/VatSchemesScreen'
 import { CompanyScreen } from './screens/company/CompanyScreen'
 import { FixedAssetsScreen } from './screens/fixed-assets/FixedAssetsScreen'
 import { CategoriesScreen } from './screens/categories/CategoriesScreen'
+import { IsocScreen } from './screens/isoc/IsocScreen'
 import { JournalsScreen } from './screens/journals/JournalsScreen'
 import { PurchasesScreen } from './screens/purchases/PurchasesScreen'
 import { SalesScreen } from './screens/sales/SalesScreen'
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="immobilisations/*" element={<FixedAssetsScreen />} />
             <Route path="journaux/*" element={<JournalsScreen />} />
             <Route path="tva/*" element={<VatScreen />} />
+            <Route path="isoc/*" element={<IsocScreen />} />
             <Route path="resultat/*" element={<ResultScreen />} />
             <Route path="societe" element={<CompanyScreen />} />
             <Route path="tiers" element={<TiersScreen />} />

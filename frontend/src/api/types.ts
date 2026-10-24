@@ -316,3 +316,81 @@ export type ApiError = {
   message: string
   fields: Record<string, string>
 }
+
+/** `GET /api/fiscal-years/{id}/isoc-prepayments`: the year's four advance payments (created on first read). */
+export interface IsocPrepaymentRead {
+  id: number
+  number: number
+  due_date: string
+  amount: string
+  payment_method_id: number
+  paid: boolean
+  payment_date: string | null
+}
+
+export interface DisallowedLineRead {
+  /** `A-0001` for a purchase, `I-001` for a fixed asset's depreciation. */
+  reference: string
+  date: string
+  /** The purchase's third party, or the asset's description. */
+  label: string
+  /** The signed charge, or the asset's depreciation of the year. */
+  amount: string
+  deductible_rate: string
+  disallowed: string
+}
+
+export interface DisallowedRubricRead {
+  total: string
+  lines: DisallowedLineRead[]
+}
+
+export interface IsocPrepaymentView {
+  /** null until `GET …/isoc-prepayments` has created the row. */
+  id: number | null
+  number: number
+  due_date: string
+  amount: string
+  payment_method_id: number | null
+  paid: boolean
+  payment_date: string | null
+  /** The quarter it counts for; null when unpaid or paid after the fourth due date. */
+  quarter: number | null
+  bonification_rate: string | null
+  bonification: string
+}
+
+export type ExemptReason = 'first_years' | 'not_small_company' | 'no_incorporation_date' | 'after_first_years'
+
+/** `GET /api/fiscal-years/{id}/isoc`: the corporate tax of the year, an estimation. */
+export interface IsocRead {
+  before_tax: string
+  disallowed: { total: string } & Record<IsocRubric, DisallowedRubricRead>
+  taxable_base: string
+  /** Read as "condition met". */
+  conditions: { small_company: boolean; minimum_pay: boolean; shares_owned: boolean }
+  reduced: boolean
+  reduced_rate: string
+  reduced_ceiling: string
+  normal_rate: string
+  tax_reduced: string
+  tax_normal: string
+  tax: string
+  majoration: {
+    rate: string
+    gross: string
+    bonification_total: string
+    threshold: string
+    amount: string
+    exempt: boolean
+    /** `first_years` when exempt; otherwise why not. */
+    exempt_reason: ExemptReason
+  }
+  prepayments: IsocPrepaymentView[]
+  paid_total: string
+  balance: string
+  estimated_tax: string
+  after_tax: string
+  assessment_year: number
+  parameters_fallback: boolean
+}
