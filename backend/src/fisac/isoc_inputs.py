@@ -15,16 +15,16 @@ from fisac.books import isoc, isoc_params, result
 from fisac.books.amounts import sign
 from fisac.models import (
     Category,
+    Company,
     FiscalYear,
     FixedAsset,
     FixedAssetDepreciation,
+    IsocPrepayment,
     IsocRubric,
     IsocScheme,
     Purchase,
     PurchaseLine,
 )
-from fisac.routers.company import get_or_create
-from fisac.routers.isoc_prepayments import ensure_prepayments
 
 _ZERO = Decimal("0.00")  # adding it turns the -0.00 of a credit note on nothing into 0.00
 _FULL = (Decimal(100), IsocRubric.OTHER)
@@ -34,11 +34,11 @@ _FULL = (Decimal(100), IsocRubric.OTHER)
 class PrepaymentView:
     """One advance payment as the ISOC read shows it, paid or not."""
 
-    id: int
+    id: int | None  # None: the row is not created yet (an unpaid zero VA)
     number: int
     due_date: date
     amount: Decimal
-    payment_method_id: int
+    payment_method_id: int | None
     paid: bool
     payment_date: date | None
     quarter: int | None
@@ -69,16 +69,46 @@ async def _schemes(session: AsyncSession) -> dict[int | None, tuple[Decimal, Iso
     return out
 
 
+async def _prepayments(
+    session: AsyncSession, year_id: int, due: list[date], params: isoc_params.Params
+) -> list[PrepaymentView]:
+    """The stored VAs with their attribution, a missing one read as an unpaid zero VA; never writes."""
+    rows = {
+        row.number: row
+        for row in await session.scalars(select(IsocPrepayment).where(IsocPrepayment.fiscal_year_id == year_id))
+    }
+    out = []
+    for number, due_date in enumerate(due, start=1):
+        row = rows.get(number)
+        prepayment = isoc.Prepayment(
+            number, row.amount if row else _ZERO, row.paid if row else False, row.payment_date if row else None
+        )
+        quarter, rate, bonification = isoc.attribute(prepayment, due, params)
+        out.append(PrepaymentView(
+            id=row.id if row else None,
+            number=number,
+            due_date=row.due_date if row else due_date,
+            amount=prepayment.amount,
+            payment_method_id=row.payment_method_id if row else None,
+            paid=prepayment.paid,
+            payment_date=prepayment.payment_date,
+            quarter=quarter,
+            bonification_rate=rate,
+            bonification=bonification,
+        ))
+    return out
+
+
 async def load(session: AsyncSession, fiscal_year: FiscalYear) -> IsocYear:
     year_id, start, end = fiscal_year.id, fiscal_year.start_date, fiscal_year.end_date
     conditions = (fiscal_year.isoc_small_company, fiscal_year.isoc_minimum_pay, fiscal_year.isoc_shares_owned)
-    company = await get_or_create(session)
-    start_month, incorporated_on = company.fiscal_year_start_month, company.incorporated_on
-    rows = await ensure_prepayments(session, fiscal_year)
-    prepayments = [
-        (row.id, row.number, row.due_date, row.amount, row.payment_method_id, row.paid, row.payment_date)
-        for row in rows
-    ]
+    # A read never writes: no company row yet reads as its defaults
+    company = await session.get(Company, 1)
+    start_month = company.fiscal_year_start_month if company else 1
+    incorporated_on = company.incorporated_on if company else None
+    params, fallback = isoc_params.params_for(end.year + 1)
+    due = isoc_params.due_dates(start)
+    prepayments = await _prepayments(session, year_id, due, params)
     schemes = await _schemes(session)
     labels = {c.id: c.label for c in await session.scalars(select(Category))}
 
@@ -126,17 +156,7 @@ async def load(session: AsyncSession, fiscal_year: FiscalYear) -> IsocYear:
             ))
     book = result.compute(built["sales"], built["purchases"], depreciation)
 
-    params, fallback = isoc_params.params_for(end.year + 1)
-    due = [p[2] for p in prepayments]  # stored on first read, by isoc_params.due_dates
     exempt = isoc.is_exempt(conditions[0], incorporated_on, start, start_month)
-    inputs = [isoc.Prepayment(p[1], p[3], p[5], p[6]) for p in prepayments]
-    views = [
-        PrepaymentView(*p, *isoc.attribute(prepayment, due, params))
-        for p, prepayment in zip(prepayments, inputs)
-    ]
+    inputs = [isoc.Prepayment(p.number, p.amount, p.paid, p.payment_date) for p in prepayments]
     computed = isoc.compute(book.result, disallowed, conditions, inputs, due, params, exempt)
-    return IsocYear(book, disallowed, conditions, views, end.year + 1, params, fallback, incorporated_on, computed)
-
-
-async def isoc_for_year(session: AsyncSession, fiscal_year: FiscalYear) -> isoc.IsocResult:
-    return (await load(session, fiscal_year)).isoc
+    return IsocYear(book, disallowed, conditions, prepayments, end.year + 1, params, fallback, incorporated_on, computed)

@@ -3,8 +3,10 @@
 from datetime import date
 
 import pytest
+from sqlalchemy import delete, func, select
 
 from fisac import fiscal_years, pieces
+from fisac.models import IsocPrepayment, PaymentMethod, PaymentMethodType
 
 TRANSFER = 1  # the seeded bank transfer, on BQ
 
@@ -120,3 +122,37 @@ async def test_isoc_of_an_asset_taken_over(client):
     assert line["amount"] == "4000.00" and line["disallowed"] == "1000.00"
     assert isoc["taxable_base"] == "0.00" and isoc["tax"] == "0.00"
     assert (await client.get("/api/fiscal-years/999/isoc")).status_code == 404
+
+
+async def test_reads_never_write_nor_need_a_transfer_method(client, session):
+    fy = (await _post(client, "/api/fiscal-years", {}))["id"]
+    await _post(client, "/api/payment-methods", {
+        "name": "Visa", "type": "card", "statement_closing_day": 25, "statement_payment_day": 5,
+    })
+    await session.execute(delete(PaymentMethod).where(PaymentMethod.type != PaymentMethodType.CARD))
+    await session.commit()
+    r = await client.get(f"/api/fiscal-years/{fy}/result")
+    assert r.status_code == 200, r.text
+    assert r.json()["after_tax"] == "0.00"
+    r = await client.get(f"/api/fiscal-years/{fy}/isoc")
+    assert r.status_code == 200, r.text
+    assert [(p["id"], p["payment_method_id"], p["amount"], p["paid"]) for p in r.json()["prepayments"]] == [
+        (None, None, "0.00", False)
+    ] * 4
+    assert [p["due_date"] for p in r.json()["prepayments"]] == ["2026-04-10", "2026-07-10", "2026-10-12", "2026-12-21"]
+    assert await session.scalar(select(func.count()).select_from(IsocPrepayment)) == 0
+
+
+async def test_a_line_without_isoc_scheme_is_fully_deductible(client):
+    fy = (await _post(client, "/api/fiscal-years", {}))["id"]
+    purchase = await _piece(client, "/api/purchases", "2026-05-10", {
+        "unit_price": "1000",
+        "category_id": await _find(client, "/api/categories", "Restaurant"),
+        "vat_scheme_id": await _find(client, "/api/vat-schemes", "Achats 21 % · récupérable"),
+        "isoc_scheme_id": None,
+    })
+    assert purchase["lines"][0]["isoc_scheme_id"] is None
+    isoc = (await client.get(f"/api/fiscal-years/{fy}/isoc")).json()
+    assert isoc["before_tax"] == "-1000.00"
+    assert isoc["disallowed"]["total"] == "0.00"
+    assert all(isoc["disallowed"][k]["lines"] == [] for k in ("restaurant", "car", "other"))

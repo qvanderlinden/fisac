@@ -33,11 +33,11 @@ class IsocConditionsRead(BaseModel):
 
 
 class IsocPrepaymentView(BaseModel):
-    id: int
+    id: int | None  # None until GET /isoc-prepayments creates the row
     number: int
     due_date: date
     amount: Decimal
-    payment_method_id: int
+    payment_method_id: int | None
     paid: bool
     payment_date: date | None
     quarter: int | None  # the quarter it counts for; None when unpaid or after the 4th due date
