@@ -41,6 +41,15 @@ class CashPiece:
 
 
 @dataclass(frozen=True)
+class Prepayment:
+    number: int
+    date: date  # the payment date, else the due date
+    amount: Decimal  # unsigned, > 0
+    account_id: int
+    paid: bool
+
+
+@dataclass(frozen=True)
 class Card:
     method_id: int
     name: str
@@ -53,7 +62,7 @@ class Card:
 @dataclass
 class Movement:
     date: date
-    kind: Literal["sale", "purchase", "card_statement"]
+    kind: Literal["sale", "purchase", "card_statement", "isoc_prepayment"]
     piece_id: int | None
     reference: str
     label: str
@@ -103,6 +112,7 @@ def build(
     start: date,
     end: date,
     today: date,
+    prepayments: list[Prepayment] = (),
 ) -> list[Journal]:
     """`pieces` may reach before `start`: a card purchase paid late in the previous
     year can have its statement paid in this one. Only movements within [start, end] stay."""
@@ -113,6 +123,12 @@ def build(
             piece.account_id,
             Movement(piece.date, piece.kind, piece.piece_id, piece.reference, piece.label,
                      piece.amount, not piece.paid),
+        ))
+    for pay in prepayments:
+        moves.append((
+            pay.account_id,
+            Movement(pay.date, "isoc_prepayment", None, f"VA{pay.number} · ISOC",
+                     "Versement anticipé", -pay.amount, not pay.paid),
         ))
     for account_id, movement in moves:
         if start <= movement.date <= end and account_id in journals:

@@ -9,7 +9,7 @@ from fisac.schemas.financial_accounts import FinancialAccountRead
 
 class MovementRead(BaseModel):
     date: date
-    kind: Literal["sale", "purchase", "card_statement"]
+    kind: Literal["sale", "purchase", "card_statement", "isoc_prepayment"]
     piece_id: int | None
     reference: str
     label: str
