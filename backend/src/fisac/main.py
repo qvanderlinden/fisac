@@ -1,8 +1,11 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
+from fisac.auth import check_settings, current_user
+from fisac.config import settings
 from fisac.errors import ApiError, api_error_handler
 from fisac.routers import (
     categories,
@@ -13,6 +16,7 @@ from fisac.routers import (
     fiscal_years,
     isoc_schemes,
     journals,
+    me,
     partners,
     payment_methods,
     purchases,
@@ -23,27 +27,38 @@ from fisac.routers import (
     vat_schemes,
 )
 
-app = FastAPI(title="fisac")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Refuse to start rather than answer every call with a 401.
+    check_settings(settings)
+    yield
+
+
+app = FastAPI(title="fisac", lifespan=lifespan)
 app.add_exception_handler(ApiError, api_error_handler)
 
 # Routers declare their paths without /api; each is mounted here as its
-# screen gets its endpoints.
-app.include_router(company.router, prefix="/api")
-app.include_router(financial_accounts.router, prefix="/api")
-app.include_router(fiscal_years.router, prefix="/api")
-app.include_router(partners.router, prefix="/api")
-app.include_router(payment_methods.router, prefix="/api")
-app.include_router(third_parties.router, prefix="/api")
-app.include_router(vat_schemes.router, prefix="/api")
-app.include_router(isoc_schemes.router, prefix="/api")
-app.include_router(depreciation_models.router, prefix="/api")
-app.include_router(categories.router, prefix="/api")
-app.include_router(sales.router, prefix="/api")
-app.include_router(purchases.router, prefix="/api")
-app.include_router(fixed_assets.router, prefix="/api")
-app.include_router(journals.router, prefix="/api")
-app.include_router(vat_periods.router, prefix="/api")
-app.include_router(result.router, prefix="/api")
+# screen gets its endpoints, behind the signed-in user (see auth.py).
+AUTH = [Depends(current_user)]
+app.include_router(me.router, prefix="/api", dependencies=AUTH)
+app.include_router(company.router, prefix="/api", dependencies=AUTH)
+app.include_router(financial_accounts.router, prefix="/api", dependencies=AUTH)
+app.include_router(fiscal_years.router, prefix="/api", dependencies=AUTH)
+app.include_router(partners.router, prefix="/api", dependencies=AUTH)
+app.include_router(payment_methods.router, prefix="/api", dependencies=AUTH)
+app.include_router(third_parties.router, prefix="/api", dependencies=AUTH)
+app.include_router(vat_schemes.router, prefix="/api", dependencies=AUTH)
+app.include_router(isoc_schemes.router, prefix="/api", dependencies=AUTH)
+app.include_router(depreciation_models.router, prefix="/api", dependencies=AUTH)
+app.include_router(categories.router, prefix="/api", dependencies=AUTH)
+app.include_router(sales.router, prefix="/api", dependencies=AUTH)
+app.include_router(purchases.router, prefix="/api", dependencies=AUTH)
+app.include_router(fixed_assets.router, prefix="/api", dependencies=AUTH)
+app.include_router(journals.router, prefix="/api", dependencies=AUTH)
+app.include_router(vat_periods.router, prefix="/api", dependencies=AUTH)
+app.include_router(result.router, prefix="/api", dependencies=AUTH)
 
 # Only present inside the built container image (see Dockerfile).
 # Guarded so local `uvicorn --reload` (no frontend build present) still starts.

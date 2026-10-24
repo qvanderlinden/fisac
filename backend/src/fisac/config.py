@@ -9,6 +9,13 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://fisac:fisac@localhost:5432/fisac"
 
+    # Sign-in is done by the shared oauth2-proxy in front of the app, which
+    # passes the Google ID token on; the API verifies it was issued to this
+    # OAuth client. On unless AUTH_DISABLED (local development and tests).
+    google_client_id: str = ""
+    auth_disabled: bool = False
+    google_jwks_url: str = "https://www.googleapis.com/oauth2/v3/certs"
+
     # OpenRouter (LLM-assisted flow generation). Key lives only in .env; the
     # default model is a free-tier slug (rotates - override via
     # OPENROUTER_MODEL if it disappears). base_url is overridable so

@@ -8,6 +8,8 @@ TEST_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test"
 )
 os.environ["DATABASE_URL"] = TEST_URL
+# The suites call the API unauthenticated; test_auth.py turns it back on.
+os.environ["AUTH_DISABLED"] = "true"
 
 import asyncpg  # noqa: E402
 import httpx  # noqa: E402
