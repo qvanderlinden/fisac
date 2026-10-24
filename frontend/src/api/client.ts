@@ -1,3 +1,4 @@
+import { signInUrl } from '../auth'
 import type { ApiError } from './types'
 
 /** A non-2xx response, as an Error (so it keeps a stack) carrying the `ApiError` shape. */
@@ -59,6 +60,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (response.status === 401) {
+    // The session is gone: sign in again, then come back here. The
+    // navigation must leave this origin, since the service worker answers a
+    // reload from its cache without asking the server.
+    const url = signInUrl(location.href)
+    if (url) {
+      location.assign(url)
+      return new Promise<never>(() => {})
+    }
+  }
   if (!response.ok) {
     throw new HttpError(toApiError(response.status, response.statusText, await response.text()))
   }

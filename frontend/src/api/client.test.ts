@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { toApiError } from './client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { api, toApiError } from './client'
 
 describe('toApiError', () => {
   it('reads a 422 into fields keyed by the last loc part', () => {
@@ -29,5 +29,42 @@ describe('toApiError', () => {
 
   it('falls back to the status text when the body is not JSON', () => {
     expect(toApiError(502, 'Bad Gateway', '<html>')).toEqual({ status: 502, message: 'Bad Gateway', fields: {} })
+  })
+})
+
+describe('request on a 401', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  function stub(status: number, href: string) {
+    const assign = vi.fn()
+    const url = new URL(href)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"Authentification requise"}', { status })))
+    vi.stubGlobal('location', { href, hostname: url.hostname, origin: url.origin, assign })
+    return assign
+  }
+
+  const PENDING = Symbol('pending')
+  const settle = (p: Promise<unknown>) =>
+    Promise.race([p, new Promise((resolve) => setTimeout(() => resolve(PENDING), 10))])
+
+  it('sends the browser to sign in', async () => {
+    const assign = stub(401, 'https://fisac.quentinvanderlinden.dev/ventes')
+    expect(await settle(api.get('/company'))).toBe(PENDING)
+    expect(assign).toHaveBeenCalledOnce()
+    expect(assign).toHaveBeenCalledWith(
+      'https://auth.quentinvanderlinden.dev/oauth2/start?rd=https%3A%2F%2Ffisac.quentinvanderlinden.dev%2Fventes',
+    )
+  })
+
+  it('throws HttpError when there is no auth origin', async () => {
+    const assign = stub(401, 'http://localhost:5173/ventes')
+    await expect(api.get('/company')).rejects.toMatchObject({ name: 'HttpError', status: 401 })
+    expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('still throws HttpError on a 404', async () => {
+    const assign = stub(404, 'https://fisac.quentinvanderlinden.dev/ventes')
+    await expect(api.get('/company')).rejects.toMatchObject({ name: 'HttpError', status: 404 })
+    expect(assign).not.toHaveBeenCalled()
   })
 })
