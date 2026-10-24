@@ -312,3 +312,12 @@ export type ApiError = {
   message: string
   fields: Record<string, string>
 }
+
+/** GET /me: the signed-in Google account (names may be missing). */
+export type Me = {
+  email: string
+  name: string | null
+  given_name: string | null
+  family_name: string | null
+  picture: string | null
+}

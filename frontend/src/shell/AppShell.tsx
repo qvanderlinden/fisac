@@ -10,6 +10,7 @@ import { INK_ICON_BUTTON, MobileHeader } from './MobileHeader'
 import { mainView } from './mainView'
 import { NAV, navItemOf } from './nav'
 import { OpenFirstYear } from './OpenFirstYear'
+import { UserCard } from './UserCard'
 
 // SidebarNav has no disabled item: an entry of a later slice gets this
 // placeholder href, which NavLink renders as an inert, muted span.
@@ -102,6 +103,7 @@ export function AppShell() {
             tone="ink"
             className="overflow-y-auto"
             header={<Brand />}
+            footer={<UserCard />}
             items={ITEMS}
             value={value}
             linkAs={NavLink}
@@ -140,6 +142,7 @@ export function AppShell() {
               aria-label="Navigation principale"
               tone="ink"
               className="h-auto w-full flex-1"
+              footer={<UserCard />}
               items={ITEMS}
               value={value}
               onChange={() => setMenuOpen(false)}
