@@ -15,6 +15,7 @@ from fisac.models import (
     CategoryDirection,
     FiscalYear,
     FixedAsset,
+    IsocScheme,
     PaymentMethod,
     PaymentMethodType,
     Purchase,
@@ -32,6 +33,9 @@ _SALES_LOCK = 7_301_002
 _PURCHASES_LOCK = 7_301_003
 
 _ZERO = Decimal("0.00")
+
+# The ISOC scheme (seeded by migration 0005) a new purchase line starts with.
+FULL_DEDUCTION_LABEL = "100 %"
 
 
 def today() -> date:
@@ -126,6 +130,7 @@ async def _lines(session: AsyncSession, spec: Spec, ids: list[int]) -> dict[int,
         }
         if spec.purchase:
             data |= {
+                "isoc_scheme_id": line.isoc_scheme_id,
                 "recovered": amounts.recovered,
                 "charge": amounts.charge,
                 "fixed_asset_id": row.asset_id,
@@ -295,12 +300,19 @@ async def _check_line(session: AsyncSession, spec: Spec, changes: dict) -> None:
     if changes.get("vat_scheme_id") is not None:
         if await session.get(VatScheme, changes["vat_scheme_id"]) is None:
             raise field_error("vat_scheme_id", "Régime de TVA introuvable")
+    if changes.get("isoc_scheme_id") is not None:
+        if await session.get(IsocScheme, changes["isoc_scheme_id"]) is None:
+            raise field_error("isoc_scheme_id", "Régime ISOC introuvable")
 
 
 async def add_line(session: AsyncSession, spec: Spec, piece_id: int, body) -> dict:
     await _get(session, spec.piece, piece_id, spec.name)
     values = body.model_dump()
     await _check_line(session, spec, values)
+    if spec.purchase and "isoc_scheme_id" not in body.model_fields_set:
+        values["isoc_scheme_id"] = await session.scalar(
+            select(IsocScheme.id).where(IsocScheme.label == FULL_DEDUCTION_LABEL)
+        )
     sort_key = await next_sort_key(session, spec.line, spec.fk == piece_id)
     session.add(spec.line(**{spec.fk.key: piece_id}, sort_key=sort_key, **values))
     await commit(session)

@@ -11,7 +11,7 @@ from fisac.schemas.company import CompanyRead, CompanyUpdate
 router = APIRouter(tags=["company"])
 
 # Nullable columns; every other field rejects an explicit null.
-_NULLABLE = {"bce_number", "registered_office", "iban", "manager_name", "manager_since"}
+_NULLABLE = {"bce_number", "registered_office", "iban", "manager_name", "manager_since", "incorporated_on"}
 
 
 async def get_or_create(session: AsyncSession) -> Company:

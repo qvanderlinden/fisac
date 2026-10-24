@@ -14,11 +14,19 @@ from fisac.schemas.pieces import (
 
 PurchaseCreate = PieceCreate
 PurchaseUpdate = PieceUpdate
-PurchaseLineCreate = LineCreate
-PurchaseLineUpdate = LineUpdate
+
+
+class PurchaseLineCreate(LineCreate):
+    # Omitted: the "100 %" scheme. An explicit null stays null (read as 100 %).
+    isoc_scheme_id: int | None = None
+
+
+class PurchaseLineUpdate(LineUpdate):
+    isoc_scheme_id: int | None = None
 
 
 class PurchaseLineRead(LineRead):
+    isoc_scheme_id: int | None
     recovered: Decimal
     charge: Decimal
     # The register entry that takes the line over, when there is one.

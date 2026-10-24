@@ -114,6 +114,8 @@ class Company(Base):
     manager_since: Mapped[date | None] = mapped_column(Date, nullable=True)
     # A paid manager has a rémunération computed every month; an unpaid one none.
     manager_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Drives the corporate tax exemption of a small company's first fiscal years.
+    incorporated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class Partner(Base):
@@ -536,7 +538,7 @@ class PurchaseLine(Base):
     vat_scheme_id: Mapped[int] = mapped_column(
         ForeignKey("vat_schemes.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    # Kept for the ISOC slice; the pieces screens do not show it.
+    # NULL is read as the "100 %" scheme.
     isoc_scheme_id: Mapped[int | None] = mapped_column(
         ForeignKey("isoc_schemes.id", ondelete="RESTRICT"), nullable=True, index=True
     )

@@ -41,3 +41,14 @@ def test_fiscal_year_of():
 
 def test_no_years_no_rows():
     assert schedule(Decimal("1000"), date(2026, 7, 1), 0, LINEAR, FULL, 1) == []
+
+
+def test_partial_first_year_starting_in_july():
+    rows = schedule(Decimal("1000"), date(2027, 1, 15), 3, LINEAR, PRORATA, 7)
+    assert [y for y, _ in rows] == [2027, 2028, 2029, 2030]
+    assert amounts(rows) == ["152.51", "333.33", "333.33", "180.83"]
+
+
+def test_acquisition_on_the_last_day_of_the_year():
+    rows = schedule(Decimal("1000"), date(2026, 12, 31), 3, LINEAR, PRORATA, 1)
+    assert str(rows[0][1]) == "0.91"

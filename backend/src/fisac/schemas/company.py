@@ -17,6 +17,7 @@ class CompanyRead(BaseModel):
     manager_name: str | None
     manager_since: date | None
     manager_paid: bool
+    incorporated_on: date | None
 
 
 class CompanyUpdate(BaseModel):
@@ -34,5 +35,6 @@ class CompanyUpdate(BaseModel):
     manager_name: str | None = Field(default=None, max_length=200)
     manager_since: date | None = None
     manager_paid: bool | None = None
+    incorporated_on: date | None = None
 
     _iban = field_validator("iban")(staticmethod(checked_iban))
