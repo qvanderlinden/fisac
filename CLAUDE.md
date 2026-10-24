@@ -24,6 +24,19 @@ routers are mounted under `/api`:
   `/fixed-assets` (`PUT /{id}/depreciations/{year}`, `POST /{id}/recompute`);
   `/fiscal-years/{id}/journals`; `/fiscal-years/{id}/vat-periods` and
   `PATCH /vat-periods/{id}`; `/fiscal-years/{id}/result`.
+- auth: `GET /me`, the signed-in user.
+
+Sign-in is not done here. The shared oauth2-proxy at
+`auth.quentinvanderlinden.dev` (repository `qvanderlinden/auth`, spec
+`docs/superpowers/specs/2026-10-24-sso-google-design.md`) signs allow-listed
+Google accounts in for every `*.quentinvanderlinden.dev` app and passes the
+Google ID token on. `backend/src/fisac/auth.py` verifies it on every `/api`
+route (`main.py` mounts each router with `dependencies=AUTH`; a test calls
+every operation unauthenticated and expects 401). On a 401 the frontend sends
+the browser to `auth.<parent domain>/oauth2/start` (`src/auth.ts`); the shell
+shows the account and a sign-out link (`src/shell/UserCard.tsx`).
+Authentication is on unless `AUTH_DISABLED=true`; on, the app refuses to start
+without `GOOGLE_CLIENT_ID`.
 
 The frontend targets this API for the shell, the seven configuration screens
 (société, tiers, catégories, régimes de TVA, régimes ISOC, modèles
@@ -97,7 +110,9 @@ built image — local `uvicorn --reload` runs API-only.
 ## Local development
 
 Needs a reachable Postgres and `DATABASE_URL` pointing at it (see `.env`).
-Nothing in this repo starts one.
+Nothing in this repo starts one. Set `AUTH_DISABLED=true` in `.env` (as in
+`.env.example`): there is no sign-in service locally, and the API then answers
+as a "dev" user.
 
 ```bash
 # once, and after any migration is added
@@ -130,6 +145,8 @@ Frontend checks: `npm run test` (vitest, run twice: default TZ, then
 Backend tests: `uv run pytest` runs the API tests against `TEST_DATABASE_URL`
 (default `postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test`; the role
 must be allowed to create databases, the suite creates and drops its own).
+The conftest sets `AUTH_DISABLED=true`; `test_auth.py` turns authentication
+back on and signs tokens with its own key.
 
 End-to-end smoke: `cd frontend && npm run smoke` drives Chromium (Playwright,
 pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
@@ -139,7 +156,8 @@ récupérable) and the fixed asset taking that line over, checked in the journal
 the VAT period of today's quarter and the result, with ventes, achats, immobilisations,
 journaux, tva and résultat at 1440 and 390 px, writing screenshots to the
 gitignored `frontend/smoke/`. It needs the
-stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database
+stack running (uvicorn on :8000 with `AUTH_DISABLED=true`, `npm run dev` on
+:5173) on a fresh database
 (it opens the first fiscal year, so a second run on the same database fails).
 
 ## Frontend design system
@@ -203,6 +221,28 @@ docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN -t fisac .
 
 ## Deployment
 
-Not configured. The image built above is the only deployable artifact;
-nothing in this repo defines TLS, a hostname, or a production Postgres
-instance. Ask before assuming any of it.
+Coolify on a VPS, behind Coolify's Traefik, at `fisac.quentinvanderlinden.dev`,
+with the sign-in service of `qvanderlinden/auth` deployed on the same server
+(its README explains how to protect an app). Nothing in this repo defines a
+production Postgres instance; ask before assuming one.
+
+fisac's resource in Coolify needs:
+
+- the environment: `DATABASE_URL`, `GOOGLE_CLIENT_ID` (the OAuth client of the
+  sign-in service), and never `AUTH_DISABLED`;
+- no published host port, so Traefik is the only way in;
+- the labels below, `<router>` being the name of the router Coolify generated
+  for fisac (and its entrypoint and resolver names copied from it). Pages go
+  through `sso` (no session: a redirect to Google), `/api` through `sso-api`
+  (no session: a 401 the frontend turns into that redirect):
+
+```
+traefik.http.routers.<router>.middlewares=sso@docker
+traefik.http.routers.<router>-api.rule=Host(`fisac.quentinvanderlinden.dev`) && PathPrefix(`/api`)
+traefik.http.routers.<router>-api.priority=100
+traefik.http.routers.<router>-api.entrypoints=https
+traefik.http.routers.<router>-api.tls=true
+traefik.http.routers.<router>-api.tls.certresolver=letsencrypt
+traefik.http.routers.<router>-api.service=<router>
+traefik.http.routers.<router>-api.middlewares=sso-api@docker
+```
