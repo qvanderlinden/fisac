@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { BookOpen, Lock } from 'lucide-react'
 import { Badge, Callout, EmptyState, Select, Tabs } from '@qvanderlinden/ui'
 import type { JournalRead, MovementRead, PaymentMethodRead } from '../../api/types'
@@ -15,10 +16,12 @@ import { MovementDetail } from './MovementDetail'
 /**
  * The Journaux screen: one tab per financial account (the journal computed from the pieces'
  * payments, read only). A sale or purchase movement opens its piece in its panel and the
- * journals reload once its last save has landed; a card statement opens the purchases it settles.
+ * journals reload once its last save has landed; a card statement opens the purchases it settles;
+ * an advance payment of the corporate tax (VA) opens the ISOC screen.
  */
 export function JournalsScreen() {
   const mobile = useMediaQuery('(max-width: 640px)')
+  const navigate = useNavigate()
   const { current } = useFiscalYear()
   const journals = useResource<JournalRead[]>(current ? `/fiscal-years/${current.id}/journals` : null)
   const methods = useResource<PaymentMethodRead[]>('/payment-methods')
@@ -46,7 +49,13 @@ export function JournalsScreen() {
   // Once the panel's last save or its delete has been answered, not as it closes.
   const reload = () => void journals.reload()
 
-  const list = { journal, year, onOpen: setOpen }
+  // An advance payment of the corporate tax has no piece: it is edited on the ISOC screen.
+  function openMovement(m: MovementRead) {
+    if (m.kind === 'isoc_prepayment') navigate('/isoc')
+    else setOpen(m)
+  }
+
+  const list = { journal, year, onOpen: openMovement }
   const piece = open?.piece_id != null ? open : null
 
   return (

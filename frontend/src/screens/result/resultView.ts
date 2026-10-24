@@ -71,6 +71,35 @@ export function resultSections(result: ResultRead): ResultSection[] {
   ]
 }
 
+/** One of the three rows that close the result: before tax, the estimated tax, after tax. */
+export interface ClosingRow {
+  key: 'before' | 'tax' | 'after'
+  label: string
+  amount: string
+  /** A total row, shown in bold. */
+  total: boolean
+  /** Where the row leads: the estimated tax opens the ISOC screen. */
+  to?: string
+}
+
+/** The rows that close the income statement, in the order the screen shows them. */
+export function resultClosing(result: ResultRead): ClosingRow[] {
+  return [
+    { key: 'before', label: 'Résultat avant impôt', amount: result.result, total: true },
+    { key: 'tax', label: 'Impôt des sociétés estimé', amount: result.estimated_tax, total: false, to: '/isoc' },
+    { key: 'after', label: 'Résultat de l’exercice', amount: result.after_tax, total: true },
+  ]
+}
+
+const cents = (value: string) => Math.round(Number(value) * 100)
+
+/** The charges plus the depreciation, added in cents, as an API decimal string. */
+export function spendingTotal(result: ResultRead): string {
+  const sum = cents(result.charges.total) + cents(result.depreciation.total)
+  const abs = Math.abs(sum)
+  return `${sum < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
+}
+
 /** An amount's share of the revenue as "85,1 %"; null when there is no revenue to compare with. */
 export function shareOfRevenue(amount: string, revenue: string): string | null {
   const total = Number(revenue)

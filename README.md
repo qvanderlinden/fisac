@@ -8,8 +8,10 @@ slices A and B are done. The API (mounted under `/api`) and the frontend cover
 the company, fiscal years, tiers, categories, VAT and ISOC schemes,
 depreciation models and payment methods (slice A), then sales, purchases, the
 fixed-asset register, the journals, the VAT periods and the result (slice B,
-`docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`). Divers, the
-director's pay, ISOC and the opening inventory are still to come.
+`docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`), then the
+corporate tax (ISOC slice,
+`docs/superpowers/specs/2026-10-24-tranche-isoc-design.md`). Divers, the
+director's pay and the opening and closing inventory are still to come.
 
 Slice B in short:
 - A category is a label with a direction (sales or purchases); it carries no
@@ -24,6 +26,23 @@ Slice B in short:
   `/sales`, `/purchases` and their `/lines`, `/sale-lines/{id}`,
   `/purchase-lines/{id}` and `/purchase-lines/available`, `/fixed-assets`
   (with `/depreciations/{year}` and `/recompute`), `PATCH /vat-periods/{id}`.
+
+ISOC slice in short:
+- Taxable base = result before tax + the disallowed expenses (each purchase
+  line's ISOC scheme, by rubric: restaurant, car, other). Tax: 20 % on the
+  first €100 000 when the three conditions are met, 25 % otherwise, plus the
+  majoration for insufficient advance payments (exempt for a small company in
+  its first three fiscal years).
+- Result after tax = result before tax − (tax + majoration). The advance
+  payments (VA1-VA4) reduce the balance to pay, not the result; a paid one is
+  a journal movement.
+- The legal parameters are in `backend/src/fisac/books/isoc_params.py`, one
+  `Params` entry per assessment year (the year after the fiscal year's end).
+  To add a year, add its entry to `_PARAMS`; a missing year falls back to the
+  latest one and the ISOC read flags it (`parameters_fallback`).
+- Routes: `/fiscal-years/{id}/isoc`, `/fiscal-years/{id}/isoc-prepayments`,
+  `PATCH /isoc-prepayments/{id}`; `/fiscal-years/{id}/result` also returns
+  `estimated_tax`, `majoration` and `after_tax`.
 
 Stack:
 - Backend: [FastAPI](https://fastapi.tiangolo.com), SQLAlchemy 2.x (async) +
@@ -91,9 +110,10 @@ Tests and smoke:
   `postgresql+asyncpg://fisac:fisac@localhost:5432/fisac_test`, a role allowed
   to create databases).
 - `cd frontend && npm run smoke` is an end-to-end check in Chromium
-  (Playwright) of slices A and B: the configuration screens, then a sale, a
-  purchase and the fixed asset taking it over, checked in the journal, the VAT
-  period and the result; it needs the stack above running on a fresh database (a second run fails: the
+  (Playwright) of slices A and B and the ISOC slice: the configuration
+  screens, then a sale, a purchase and the fixed asset taking it over, a
+  restaurant purchase and a paid VA1 of 2 000, checked in the journal, the VAT
+  period, the ISOC screen and the result; it needs the stack above running on a fresh database (a second run fails: the
   first fiscal year is already open) and saves
   screenshots to `frontend/smoke/` (gitignored).
 

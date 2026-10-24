@@ -218,7 +218,7 @@ export interface RegisterRow extends FixedAssetBase {
 
 export interface MovementRead {
   date: string
-  kind: 'sale' | 'purchase' | 'card_statement'
+  kind: 'sale' | 'purchase' | 'card_statement' | 'isoc_prepayment'
   piece_id: number | null
   reference: string
   label: string
@@ -303,7 +303,12 @@ export interface ResultRead {
   revenue: ResultGroupRead
   charges: ResultGroupRead
   depreciation: ResultDepreciationRead
+  /** Before tax. */
   result: string
+  /** The tax plus the majoration, as the ISOC read gives it. */
+  estimated_tax: string
+  majoration: string
+  after_tax: string
 }
 
 /** What `api/client.ts` throws for a non-2xx response. `message` is the

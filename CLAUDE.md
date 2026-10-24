@@ -12,8 +12,10 @@ The app was rebuilt from the "fisac - Compta simplifiée" design canvas. The dat
 model is done (`backend/src/fisac/models.py`, migrations 0005 and 0006, spec
 `docs/superpowers/specs/2026-10-23-compta-simplifiee-data-model.md`). Slice A
 ("socle", spec `docs/superpowers/specs/2026-10-23-tranche-a-socle-design.md`)
-and slice B ("pièces", spec
-`docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`) are done. The
+slice B ("pièces", spec
+`docs/superpowers/specs/2026-10-23-tranche-b-pieces-design.md`) and the ISOC
+slice (corporate tax, spec
+`docs/superpowers/specs/2026-10-24-tranche-isoc-design.md`) are done. The
 routers are mounted under `/api`:
 
 - slice A: company, fiscal years, third parties, categories, VAT and ISOC
@@ -23,14 +25,18 @@ routers are mounted under `/api`:
   `/purchase-lines/available`; `/fiscal-years/{id}/fixed-assets` and
   `/fixed-assets` (`PUT /{id}/depreciations/{year}`, `POST /{id}/recompute`);
   `/fiscal-years/{id}/journals`; `/fiscal-years/{id}/vat-periods` and
-  `PATCH /vat-periods/{id}`; `/fiscal-years/{id}/result`.
+  `PATCH /vat-periods/{id}`; `/fiscal-years/{id}/result`;
+- ISOC slice: `/fiscal-years/{id}/isoc` (the computation, read only),
+  `/fiscal-years/{id}/isoc-prepayments` (the four VA rows, created on first
+  read) and `PATCH /isoc-prepayments/{id}`; the result also returns
+  `estimated_tax`, `majoration` and `after_tax`.
 
 The frontend targets this API for the shell, the seven configuration screens
 (société, tiers, catégories, régimes de TVA, régimes ISOC, modèles
-d'amortissement, moyens de paiement) and the six slice B screens (ventes,
-achats, immobilisations, journaux, tva, résultat). The other nav entries
-(divers, rémunération, isoc, inventaire, inventaire d'ouverture) are
-placeholders ("bientôt") and still to come. Only typed facts are stored;
+d'amortissement, moyens de paiement), the six slice B screens (ventes,
+achats, immobilisations, journaux, tva, résultat) and the ISOC screen. The
+other nav entries (divers, rémunération, inventaire, inventaire d'ouverture)
+are placeholders ("bientôt") and still to come. Only typed facts are stored;
 journals, VAT/ISOC figures, the result and the closing inventory are computed.
 
 Slice B rules to keep in mind:
@@ -45,6 +51,28 @@ Slice B rules to keep in mind:
 - A fixed asset is created from the register by first picking an available
   purchase line; its value and date follow from the line (read only).
 - Journals start at 0 (no opening balance yet).
+
+ISOC slice rules to keep in mind:
+
+- The taxable base is the result before tax plus the disallowed expenses:
+  each purchase line (and a fixed asset's depreciation, through its line) has
+  an ISOC scheme (NULL reads as "100 %"); the part not deductible is added,
+  by rubric (restaurant, car, other).
+- The tax is 20 % on the first €100 000 when the fiscal year's three
+  conditions are met (`isoc_small_company`, `isoc_minimum_pay`,
+  `isoc_shares_owned`, each read as "condition met"), 25 % otherwise; the
+  majoration for insufficient advance payments is added unless the company is
+  small and in its first three fiscal years (from `incorporated_on`).
+- Result after tax = result before tax − estimated tax (tax + majoration).
+  The advance payments (VA1-VA4) do not enter the result: a paid VA is a
+  journal movement (`kind: "isoc_prepayment"`, reference `VA1 · ISOC`, no
+  piece) that opens the ISOC screen, and it reduces the balance to pay.
+- The legal parameters live in `backend/src/fisac/books/isoc_params.py`,
+  keyed by assessment year (the calendar year after the fiscal year's end):
+  rates, ceiling, majoration rate, the four bonifications and the threshold.
+  To add a year, add a `Params` entry to `_PARAMS`; a year with no entry
+  falls back to the latest one and the ISOC read says so
+  (`parameters_fallback`).
 
 Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 `pyproject.toml`, pinned via `.python-version`), React + Vite frontend
@@ -136,9 +164,13 @@ pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
 empty state, opening the first fiscal year, the seven configuration screens,
 then a sale (1 000 at Ventes 21 %), a purchase (1 500 at Achats 21 % ·
 récupérable) and the fixed asset taking that line over, checked in the journal,
-the VAT period of today's quarter and the result, with ventes, achats, immobilisations,
-journaux, tva and résultat at 1440 and 390 px, writing screenshots to the
-gitignored `frontend/smoke/`. It needs the
+then a restaurant purchase (1 000 at Achats 12 % · non récupérable, ISOC
+69 % · restaurant) and VA1 of 2 000 ticked paid on the ISOC screen, checked
+there (base, tax, VA, disallowed 347,20 against the API's figures), in the
+journal (`VA1 · ISOC`), in the VAT period of today's quarter and in the result
+("Impôt des sociétés estimé"), with ventes, achats, immobilisations, journaux,
+tva, isoc and résultat at 1440 and 390 px (no horizontal overflow at 390),
+writing screenshots to the gitignored `frontend/smoke/`. It needs the
 stack running (uvicorn on :8000, `npm run dev` on :5173) on a fresh database
 (it opens the first fiscal year, so a second run on the same database fails).
 

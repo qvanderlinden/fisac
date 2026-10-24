@@ -14,7 +14,9 @@ import { ResultHeader, ResultTable } from './ResultTable'
 import { pieceSide, type ResultRow } from './resultView'
 
 /**
- * The Résultat screen: tiles and the income statement by category, with depreciation by asset.
+ * The Résultat screen: tiles and the income statement by category, with depreciation by asset,
+ * closing on the result before tax, the estimated corporate tax (it opens the ISOC screen) and
+ * the result after tax.
  * A category row lists its pieces, a piece opens in its panel (the result reloads once its
  * last save has landed), an asset row goes to that asset in Immobilisations.
  */
@@ -50,7 +52,7 @@ export function ResultScreen() {
   // Once the panel's last save or its delete has been answered, not as it closes.
   const reload = () => void result.reload()
 
-  const list = { result: result.data, year, onOpen: open }
+  const list = { result: result.data, year, onOpen: open, onNavigate: (to: string) => navigate(to) }
   return (
     <div className="flex flex-col gap-6">
       <ResultHeader year={year} />

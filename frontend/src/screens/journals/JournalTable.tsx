@@ -18,8 +18,9 @@ export interface JournalListProps {
 export function JournalTiles({ journal, year }: { journal: JournalRead; year: string }) {
   const planned = journal.movements.filter((m) => m.planned)
   const plannedCount = (sign: 1 | -1) => planned.filter((m) => Math.sign(Number(m.amount)) === sign).length
+  // One tile per row on a phone: a balance in the thousands does not fit half the width.
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 *:min-w-0 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard label="solde au début" value={Number(journal.opening)} format="eur" footnote="les journaux partent de zéro" />
       <StatCard
         label="recettes"

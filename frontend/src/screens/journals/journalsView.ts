@@ -27,11 +27,12 @@ export function paymentOf(m: MovementRead): string | null {
   return cents(m.amount) < 0 ? m.amount.replace('-', '') : null
 }
 
-/** What a movement is, for the line under its label: "vente", "achat", "décompte". */
+/** What a movement is, for the line under its label: "vente", "achat", "décompte", "impôt". */
 export const KIND_LABELS: Record<MovementRead['kind'], string> = {
   sale: 'vente',
   purchase: 'achat',
   card_statement: 'décompte',
+  isoc_prepayment: 'impôt',
 }
 
 export interface StatementPurchases {

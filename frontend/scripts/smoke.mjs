@@ -1,4 +1,4 @@
-// End-to-end smoke of slices A and B. Needs the stack running: uvicorn on :8000 and
+// End-to-end smoke of slices A and B and of the ISOC slice. Needs the stack running: uvicorn on :8000 and
 // `npm run dev` on :5173, against a fresh database. Saves screenshots under
 // smoke/ and exits non-zero on a failed check or a console error.
 import { mkdirSync } from 'node:fs'
@@ -22,6 +22,7 @@ const SCREENS_B = [
   ['immobilisations', '/immobilisations'],
   ['journaux', '/journaux'],
   ['tva', '/tva'],
+  ['isoc', '/isoc'],
   ['resultat', '/resultat'],
 ]
 const WIDTHS = [
@@ -36,14 +37,19 @@ const NOW = new Date()
 const YEAR = NOW.getFullYear()
 const QUARTER = new RegExp(`^T${Math.floor(NOW.getMonth() / 3) + 1}`)
 const plain = (t) => t.replace(/[\u00a0\u202f]/g, ' ')
+// An API decimal as the screens show its digits, unsigned: "-1234.5" → "1 234,50".
+const digits = (value) => {
+  const [int, dec] = Math.abs(Number(value)).toFixed(2).split('.')
+  return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${dec}`
+}
 const failures = []
 const check = (ok, what) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`)
   if (!ok) failures.push(what)
 }
 
-/** Fills the open piece's first line: description, category, VAT scheme, unit price. */
-async function fillLine(page, category, scheme, price, description = '') {
+/** Fills the open piece's first line: description, category, VAT scheme, ISOC scheme (purchases), unit price. */
+async function fillLine(page, category, scheme, price, description = '', isoc = '') {
   const choose = async (name, option) => {
     await page.getByRole('combobox', { name }).first().click()
     await page.getByRole('option', { name: option, exact: true }).click()
@@ -51,6 +57,7 @@ async function fillLine(page, category, scheme, price, description = '') {
   if (description) await page.locator('tbody tr').getByLabel('Description').first().fill(description)
   await choose('Catégorie', category)
   await choose('Régime de TVA', scheme)
+  if (isoc) await choose('Régime ISOC', isoc)
   const unit = page.getByLabel('Prix unitaire').first()
   await unit.fill(price)
   await unit.blur()
@@ -192,6 +199,55 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await settle()
     const journal = plain(await page.locator('body').innerText())
     check(journal.includes('S-0001') && journal.includes('A-0001') && journal.includes('1 210,00') && journal.includes('1 815,00'), 'journal: the sale (1 210,00) and the purchase (1 815,00) movements')
+
+    // ISOC: a restaurant purchase (1000 at 12 % non recoverable, 69 % deductible).
+    await page.goto(`${BASE}/achats`)
+    await settle()
+    await page.getByRole('button', { name: 'Nouvel achat' }).click()
+    await page.getByRole('button', { name: 'Ajouter une ligne' }).click()
+    await fillLine(page, 'Restaurant', 'Achats 12 % · non récupérable', '1000', 'Repas client', '69 % · restaurant')
+    await settle()
+    const restaurant = await page
+      .waitForFunction(() => document.body.innerText.replace(/[\u00a0\u202f]/g, ' ').includes('1 120,00'), null, { timeout: 5000 })
+      .then(() => true, () => false)
+    check(restaurant, 'restaurant purchase: TVAC 1 120,00')
+    await closeDialog(page)
+    check((await page.getByText('A-0002').count()) > 0, 'restaurant purchase: A-0002 is in the list')
+
+    // ISOC: VA1 of 2000, ticked paid (its date becomes the due date).
+    await page.goto(`${BASE}/isoc`)
+    await settle()
+    const va1 = page.getByRole('row').filter({ has: page.getByRole('textbox', { name: 'Montant VA1' }) })
+    const vaAmount = va1.getByRole('textbox', { name: 'Montant VA1' })
+    await vaAmount.fill('2000')
+    await vaAmount.blur()
+    await settle()
+    await va1.getByRole('checkbox', { name: 'Payé' }).click()
+    await settle()
+    await page.waitForTimeout(300)
+    const years = await (await page.request.get(`${BASE}/api/fiscal-years`)).json()
+    const fy = years.find((y) => y.end_date.startsWith(String(YEAR)))
+    const isoc = await (await page.request.get(`${BASE}/api/fiscal-years/${fy.id}/isoc`)).json()
+    const va = isoc.prepayments.find((p) => p.number === 1)
+    check(va.paid && Number(va.amount) === 2000 && Number(isoc.paid_total) === 2000, 'isoc: VA1 2 000,00 stored paid')
+    check(Number(isoc.disallowed.restaurant.total) === 347.2, 'isoc: restaurant disallowed 31 % of 1 120,00 = 347,20')
+    await page.reload()
+    await settle()
+    const isocText = plain(await page.locator('body').innerText())
+    check(
+      /base imposable/i.test(isocText) && isocText.includes(digits(isoc.taxable_base)),
+      `isoc: the taxable base (${digits(isoc.taxable_base)}) is shown`,
+    )
+    check(
+      /impôt estimé/i.test(isocText) && isocText.includes(digits(isoc.estimated_tax)),
+      `isoc: the estimated tax (${digits(isoc.estimated_tax)}) is shown`,
+    )
+    check(isocText.includes('VA1') && isocText.includes('2 000,00') && isocText.includes('347,20'), 'isoc: VA1 2 000,00 and the disallowed 347,20 are shown')
+
+    // The paid VA is a movement of the financial journal.
+    await page.goto(`${BASE}/journaux`)
+    await settle()
+    check(plain(await page.locator('body').innerText()).includes('VA1 · ISOC'), 'journal: the VA1 · ISOC movement')
   }
 
   // The new screens, at both widths.
@@ -214,7 +270,10 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     if (i === 0) {
       const text = plain(await page.locator('body').innerText())
       if (name === 'tva') check(/(?<![\d,] ?)210,00/.test(text) && /(?<![\d,] ?)315,00/.test(text), 'tva: sales VAT 210,00 and recovered 315,00')
-      if (name === 'resultat') check(text.includes('1 000,00'), 'resultat: revenue 1 000,00')
+      if (name === 'resultat') {
+        check(text.includes('1 000,00'), 'resultat: revenue 1 000,00')
+        check(text.includes('Impôt des sociétés estimé') && text.includes('Résultat avant impôt'), 'resultat: "Résultat avant impôt" and "Impôt des sociétés estimé"')
+      }
     }
     await shot(name)
   }
