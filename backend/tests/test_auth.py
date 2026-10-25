@@ -1,6 +1,3 @@
-import base64
-import hashlib
-import hmac
 import json
 import re
 import threading
@@ -9,201 +6,75 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from qv_auth import Issuer, TokenVerifier
+from sqlalchemy import select
 
-from fisac import auth
-from fisac.config import Settings, settings
+from fisac.auth import auth, build_auth
+from fisac.config import Settings
 from fisac.main import app
-
-CLAIMS = {
-    "iss": "https://accounts.google.com",
-    "aud": "test-client",
-    "sub": "1",
-    "email": "q@example.com",
-    "email_verified": True,
-    "name": "Quentin Vanderlinden",
-    "given_name": "Quentin",
-    "family_name": "Vanderlinden",
-    "picture": "https://example.com/a.png",
-}
+from fisac.models import User
 
 
-def _key():
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+class FakeIssuer:
+    def __init__(self, url: str, key: rsa.RSAPrivateKey) -> None:
+        self.url = url
+        self.key = key
 
-
-@pytest.fixture(scope="module")
-def key():
-    return _key()
+    def token(self, **overrides) -> str:
+        claims = {
+            "iss": self.url,
+            "aud": "oauth2-proxy",
+            "email": "q@example.com",
+            "email_verified": True,
+            "name": "Quentin Vanderlinden",
+            "exp": int(time.time()) + 3600,
+            **overrides,
+        }
+        return jwt.encode(claims, self.key, algorithm="RS256", headers={"kid": "test"})
 
 
 @pytest.fixture(scope="module")
-def jwks_url(key):
-    """The key's JWKS, served over HTTP on localhost (PyJWKClient only fetches http(s))."""
+def issuer():
+    """A local OIDC issuer (PyJWKClient only fetches http(s) URLs)."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key(), as_dict=True)
-    body = json.dumps({"keys": [{**jwk, "kid": "test", "use": "sig", "alg": "RS256"}]}).encode()
+    keys = json.dumps({"keys": [{**jwk, "kid": "test", "use": "sig", "alg": "RS256"}]}).encode()
+    url = ""
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            # /html stands for a captive page or an egress proxy's error page.
-            html = self.path == "/html"
+            if self.path == "/.well-known/openid-configuration":
+                body = json.dumps({"issuer": url, "jwks_uri": url + "/keys"}).encode()
+            else:
+                body = keys
             self.send_response(200)
-            self.send_header("Content-Type", "text/html" if html else "application/json")
+            self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b"<html>blocked</html>" if html else body)
+            self.wfile.write(body)
 
         def log_message(self, *args):
             pass
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
+    url = f"http://127.0.0.1:{server.server_port}"
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}/certs"
+    yield FakeIssuer(url, key)
     server.shutdown()
 
 
 @pytest.fixture(autouse=True)
-def auth_on(monkeypatch, jwks_url):
-    monkeypatch.setattr(settings, "auth_disabled", False)
-    monkeypatch.setattr(settings, "google_client_id", "test-client")
-    monkeypatch.setattr(settings, "google_jwks_url", jwks_url)
-    auth._jwks_client.cache_clear()
-    yield
-    auth._jwks_client.cache_clear()
-
-
-@pytest.fixture
-def token(key):
-    def make(signing_key=None, drop=(), **overrides):
-        now = int(time.time())
-        claims = {**CLAIMS, "iat": now, "exp": now + 3600, **overrides}
-        for name in drop:
-            claims.pop(name)
-        return jwt.encode(claims, signing_key or key, algorithm="RS256", headers={"kid": "test"})
-
-    return make
+def auth_on(monkeypatch, issuer):
+    """Turn authentication on for the app's own `auth`, trusting the fake issuer."""
+    issuers = [Issuer(issuer.url, audience="oauth2-proxy")]
+    monkeypatch.setattr(auth, "disabled", False)
+    monkeypatch.setattr(auth, "issuers", issuers)
+    monkeypatch.setattr(auth, "admin_emails", frozenset({"admin@example.com"}))
+    monkeypatch.setattr(auth, "_verifier", TokenVerifier(issuers))
 
 
 def bearer(value: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {value}"}
-
-
-async def test_missing_header_is_401(client):
-    r = await client.get("/api/company")
-    assert r.status_code == 401
-
-
-async def test_foreign_key_is_401(client, token):
-    r = await client.get("/api/company", headers=bearer(token(signing_key=_key())))
-    assert r.status_code == 401
-
-
-async def test_wrong_audience_is_401(client, token):
-    r = await client.get("/api/company", headers=bearer(token(aud="other-client")))
-    assert r.status_code == 401
-
-
-async def test_wrong_issuer_is_401(client, token):
-    r = await client.get("/api/company", headers=bearer(token(iss="https://evil.example")))
-    assert r.status_code == 401
-
-
-async def test_expired_token_is_401(client, token):
-    r = await client.get("/api/company", headers=bearer(token(exp=int(time.time()) - 60)))
-    assert r.status_code == 401
-
-
-async def test_unverified_email_is_401(client, token):
-    r = await client.get("/api/company", headers=bearer(token(email_verified=False)))
-    assert r.status_code == 401
-
-
-async def test_unsigned_or_hs256_token_is_refused(client, key):
-    claims = {**CLAIMS, "exp": int(time.time()) + 3600}
-    unsigned = jwt.encode(claims, None, algorithm="none", headers={"kid": "test"})
-    pem = key.public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    )
-    # Forged by hand: PyJWT refuses to sign HS256 with a PEM key.
-    def b64(data: bytes) -> str:
-        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-    head = b64(json.dumps({"alg": "HS256", "typ": "JWT", "kid": "test"}).encode())
-    body = b64(json.dumps(claims).encode())
-    sig = b64(hmac.new(pem, f"{head}.{body}".encode(), hashlib.sha256).digest())
-    for value in (unsigned, f"{head}.{body}.{sig}", "not-a-jwt"):
-        r = await client.get("/api/company", headers=bearer(value))
-        assert r.status_code == 401, value
-
-
-async def test_unreachable_jwks_is_503(client, token, monkeypatch):
-    # Not a 401: the session is fine, the frontend must show the error
-    # rather than send the browser to sign in again (a loop).
-    # Nothing listens on port 9 of localhost.
-    monkeypatch.setattr(settings, "google_jwks_url", "http://127.0.0.1:9/certs")
-    auth._jwks_client.cache_clear()
-    r = await client.get("/api/company", headers=bearer(token()))
-    assert r.status_code == 503
-    assert r.json()["detail"] == "Les clés de Google sont injoignables, réessayez dans un instant"
-
-
-async def test_jwks_not_json_is_503(client, token, monkeypatch, jwks_url):
-    monkeypatch.setattr(settings, "google_jwks_url", jwks_url.replace("/certs", "/html"))
-    auth._jwks_client.cache_clear()
-    r = await client.get("/api/company", headers=bearer(token()))
-    assert r.status_code == 503
-
-
-async def test_token_without_kid_is_401(client, key):
-    claims = {**CLAIMS, "exp": int(time.time()) + 3600}
-    value = jwt.encode(claims, key, algorithm="RS256")
-    r = await client.get("/api/company", headers=bearer(value))
-    assert r.status_code == 401
-
-
-def test_jwks_client_times_out_quickly():
-    assert auth._jwks_client("https://example.com/certs").timeout == 5
-
-
-async def test_valid_token_reaches_a_route(client, token):
-    r = await client.get("/api/company", headers=bearer(token()))
-    assert r.status_code == 200
-
-
-async def test_issuer_without_scheme_is_accepted(client, token):
-    r = await client.get("/api/company", headers=bearer(token(iss="accounts.google.com")))
-    assert r.status_code == 200
-
-
-async def test_me_returns_the_claims(client, token):
-    r = await client.get("/api/me", headers=bearer(token()))
-    assert r.status_code == 200
-    assert r.json() == {
-        "email": "q@example.com",
-        "name": "Quentin Vanderlinden",
-        "given_name": "Quentin",
-        "family_name": "Vanderlinden",
-        "picture": "https://example.com/a.png",
-    }
-
-
-async def test_me_missing_names_are_null(client, token):
-    value = token(drop=("name", "given_name", "family_name", "picture"))
-    r = await client.get("/api/me", headers=bearer(value))
-    assert r.json() == {
-        "email": "q@example.com",
-        "name": None,
-        "given_name": None,
-        "family_name": None,
-        "picture": None,
-    }
-
-
-async def test_disabled_returns_dev_user(client, monkeypatch):
-    monkeypatch.setattr(settings, "auth_disabled", True)
-    r = await client.get("/api/me")
-    assert r.status_code == 200
-    assert r.json() == auth.DEV_USER.model_dump()
 
 
 async def test_every_api_route_requires_auth(client):
@@ -223,8 +94,40 @@ async def test_every_api_route_requires_auth(client):
     assert allowed == []
 
 
-def test_check_settings_refuses_empty_client_id():
+async def test_pending_user_gets_403_pending(client, issuer):
+    r = await client.get("/api/company", headers=bearer(issuer.token()))
+    assert r.status_code == 403
+    assert r.json() == {"detail": "Accès en attente de validation", "code": "pending"}
+
+
+async def test_approved_user_passes(client, issuer, session):
+    session.add(User(email="q@example.com", status="approved"))
+    await session.commit()
+    r = await client.get("/api/company", headers=bearer(issuer.token()))
+    assert r.status_code == 200
+
+
+async def test_admin_email_is_approved_on_first_call(client, issuer, session):
+    r = await client.get("/api/company", headers=bearer(issuer.token(email="admin@example.com")))
+    assert r.status_code == 200
+    user = await session.scalar(select(User).where(User.email == "admin@example.com"))
+    assert (user.status, user.is_admin) == ("approved", True)
+
+
+async def test_me_is_mounted_under_auth(client, issuer):
+    r = await client.get("/api/auth/me", headers=bearer(issuer.token()))
+    assert r.status_code == 200
+    assert r.json()["status"] == "pending"
+    assert (await client.get("/api/me", headers=bearer(issuer.token()))).status_code == 404
+
+
+def test_admin_emails_setting_is_split():
+    built = build_auth(Settings(auth_issuer="https://id.example", auth_admin_emails=" A@x.com, b@y.com ,"))
+    assert built.admin_emails == {"a@x.com", "b@y.com"}
+
+
+def test_startup_refuses_empty_admin_emails():
     with pytest.raises(RuntimeError):
-        auth.check_settings(Settings(auth_disabled=False, google_client_id=""))
-    auth.check_settings(Settings(auth_disabled=True, google_client_id=""))
-    auth.check_settings(Settings(auth_disabled=False, google_client_id="id"))
+        build_auth(Settings(auth_disabled=False, auth_issuer="https://id.example", auth_admin_emails="")).check()
+    build_auth(Settings(auth_disabled=True, auth_admin_emails="")).check()
+    build_auth(Settings(auth_disabled=False, auth_issuer="https://id.example", auth_admin_emails="a@x.com")).check()

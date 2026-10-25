@@ -15,11 +15,20 @@ RUN npm run build
 FROM python:3.14-slim AS backend-build
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /usr/local/bin/
 WORKDIR /app
+# git: qv-auth is installed from its GitHub repository.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 # backend/ holds the package source (pyproject points hatchling at
 # backend/src/fisac), so it has to be in place before uv builds the project.
 COPY backend/ ./backend/
-RUN uv sync --frozen --no-dev
+# The private repository is read with the build secret, handed to git through
+# GIT_CONFIG_* env vars of this one command only: nothing lands in a layer.
+RUN --mount=type=secret,id=NODE_AUTH_TOKEN,env=GH_TOKEN \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0="url.https://x-access-token:${GH_TOKEN}@github.com/.insteadOf" \
+    GIT_CONFIG_VALUE_0="https://github.com/" \
+    uv sync --frozen --no-dev
 
 FROM python:3.14-slim AS final
 WORKDIR /app

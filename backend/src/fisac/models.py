@@ -32,6 +32,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from qv_auth import UserMixin
 from sqlalchemy.orm import Mapped, mapped_column
 
 from fisac.db import Base
@@ -896,3 +897,7 @@ class IsocPrepayment(Base):
     )
     paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class User(Base, UserMixin):
+    """A person who signs in; access is granted by an administrator (qv-auth)."""

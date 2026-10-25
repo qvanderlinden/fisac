@@ -11,11 +11,15 @@ dependencies = [
     "pydantic-settings>=2.5",
     "python-dateutil>=2.9",
     "httpx>=0.27",
-    "pyjwt[crypto]>=2.10",
+    "qv-auth @ git+https://github.com/qvanderlinden/auth@v0.1.0#subdirectory=python",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27", "pyjwt[crypto]>=2.10"]
+
+# Task 10 removes this local path source once the v0.1.0 tag exists.
+[tool.uv.sources]
+qv-auth = { path = "../auth/python", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
@@ -27,3 +31,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/src/fisac"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
