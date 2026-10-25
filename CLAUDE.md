@@ -24,19 +24,27 @@ routers are mounted under `/api`:
   `/fixed-assets` (`PUT /{id}/depreciations/{year}`, `POST /{id}/recompute`);
   `/fiscal-years/{id}/journals`; `/fiscal-years/{id}/vat-periods` and
   `PATCH /vat-periods/{id}`; `/fiscal-years/{id}/result`.
-- auth: `GET /me`, the signed-in user.
+- auth, from qv-auth under `/api/auth`: `GET /auth/me` (the signed-in user)
+  and `/auth/users` (administration of accounts, admins only).
 
-Sign-in is not done here. The shared oauth2-proxy at
+Sign-in is not done here, and access is decided per app. Dex
+(`id.quentinvanderlinden.dev`) says who you are, the shared oauth2-proxy at
 `auth.quentinvanderlinden.dev` (repository `qvanderlinden/auth`, spec
-`docs/superpowers/specs/2026-10-24-sso-google-design.md`) signs allow-listed
-Google accounts in for every `*.quentinvanderlinden.dev` app and passes the
-Google ID token on. `backend/src/fisac/auth.py` verifies it on every `/api`
-route (`main.py` mounts each router with `dependencies=AUTH`; a test calls
-every operation unauthenticated and expects 401). On a 401 the frontend sends
-the browser to `auth.<parent domain>/oauth2/start` (`src/auth.ts`); the shell
-shows the account and a sign-out link (`src/shell/UserCard.tsx`).
-Authentication is on unless `AUTH_DISABLED=true`; on, the app refuses to start
-without `GOOGLE_CLIENT_ID`.
+`docs/superpowers/specs/2026-10-24-sso-google-design.md`) holds the session
+for every `*.quentinvanderlinden.dev` app and passes the ID token on. The
+`qv-auth` module of that repository (`backend/src/fisac/auth.py`) verifies
+the token on every `/api` route (`main.py` mounts each router with
+`dependencies=AUTH`) and keeps the `users` table (`User` in `models.py`,
+migration 0008): a new account is `pending` until an admin accepts it in
+« utilisateurs » (admins only; the nav shows a pending badge); a rejected one
+is refused. `AUTH_ADMIN_EMAILS` bootstraps the admins (approved on sight).
+`tests/test_auth.py` calls every operation unauthenticated and expects 401,
+and checks the pending, approved and admin paths. In the frontend, `AuthGate`
+from `@qvanderlinden/auth-ui` wraps the app in `main.tsx`; a 401 goes through
+`handleUnauthorized` (in `src/api/client.ts`) to the sign-in service, a 403
+pending or rejected reloads the page once so the gate shows its screen; the
+shell shows `UserCard` from the same package. Authentication is on unless
+`AUTH_DISABLED=true`; on, the app refuses to start without `AUTH_ADMIN_EMAILS`.
 
 The frontend targets this API for the shell, the seven configuration screens
 (société, tiers, catégories, régimes de TVA, régimes ISOC, modèles
@@ -58,6 +66,12 @@ Slice B rules to keep in mind:
 - A fixed asset is created from the register by first picking an available
   purchase line; its value and date follow from the line (read only).
 - Journals start at 0 (no opening balance yet).
+
+Auth dependencies: `qv-auth` (Python, `[tool.uv.sources]`) and
+`@qvanderlinden/auth-ui` (npm) come from `qvanderlinden/auth`. For now they
+point at local sources, `path = "../auth/python"` and `file:../../auth/ui`, so
+the repo builds only next to a checkout of that repository; they become the
+`v0.1.0` tag and `^0.1.0` once released.
 
 Stack: FastAPI backend on Python 3.14 (`requires-python = ">=3.14"` in
 `pyproject.toml`, pinned via `.python-version`), React + Vite frontend
@@ -112,7 +126,7 @@ built image — local `uvicorn --reload` runs API-only.
 Needs a reachable Postgres and `DATABASE_URL` pointing at it (see `.env`).
 Nothing in this repo starts one. Set `AUTH_DISABLED=true` in `.env` (as in
 `.env.example`): there is no sign-in service locally, and the API then answers
-as a "dev" user.
+as an approved admin, `dev@localhost`, created in the database.
 
 ```bash
 # once, and after any migration is added
@@ -154,7 +168,7 @@ empty state, opening the first fiscal year, the seven configuration screens,
 then a sale (1 000 at Ventes 21 %), a purchase (1 500 at Achats 21 % ·
 récupérable) and the fixed asset taking that line over, checked in the journal,
 the VAT period of today's quarter and the result, with ventes, achats, immobilisations,
-journaux, tva and résultat at 1440 and 390 px, writing screenshots to the
+journaux, tva and résultat (and utilisateurs, with `dev@localhost` as admin) at 1440 and 390 px, writing screenshots to the
 gitignored `frontend/smoke/`. It needs the
 stack running (uvicorn on :8000 with `AUTH_DISABLED=true`, `npm run dev` on
 :5173) on a fresh database
@@ -209,8 +223,11 @@ sync → final), whose CMD runs `alembic upgrade head` then uvicorn on `:8000`.
 It expects `DATABASE_URL` in the environment and reaches Postgres over the
 network — it does not start one.
 
-The frontend stage installs `@qvanderlinden/ui` from GitHub Packages, so the
-build needs `NODE_AUTH_TOKEN` in the environment. It is passed as a BuildKit
+The frontend stage installs `@qvanderlinden/ui` from GitHub Packages, and the
+backend stage installs `qv-auth` from the private `qvanderlinden/auth`
+repository, so the build needs `NODE_AUTH_TOKEN` in the environment (a token
+that also reads that repository). The backend stage hands it to git through
+`GIT_CONFIG_*` variables of the one `uv sync` RUN. It is passed as a BuildKit
 secret, mounted for the `npm ci` step only, and never lands in an image layer.
 The secret id is `NODE_AUTH_TOKEN`, the variable's own name, because that is
 the id Coolify uses when it passes build variables as secrets.
@@ -223,17 +240,20 @@ docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN -t fisac .
 
 Coolify on a VPS, behind Coolify's Traefik, at `fisac.quentinvanderlinden.dev`,
 with the sign-in service of `qvanderlinden/auth` deployed on the same server
-(its README explains how to protect an app). Nothing in this repo defines a
+(its README explains how to protect an app, and its deployment order: fisac
+must run qv-auth in production before the sign-in service switches to
+any-account sign-in). Nothing in this repo defines a
 production Postgres instance; ask before assuming one.
 
 fisac's resource in Coolify needs:
 
-- the environment: `DATABASE_URL`, `GOOGLE_CLIENT_ID` (the OAuth client of the
-  sign-in service), and never `AUTH_DISABLED`;
+- the environment: `DATABASE_URL`, `AUTH_ISSUER`
+  (`https://id.quentinvanderlinden.dev`), `AUTH_AUDIENCE` (`oauth2-proxy`),
+  `AUTH_ADMIN_EMAILS` (comma-separated), and never `AUTH_DISABLED`;
 - no published host port, so Traefik is the only way in;
 - the labels below, `<router>` being the name of the router Coolify generated
   for fisac (and its entrypoint and resolver names copied from it). Pages go
-  through `sso` (no session: a redirect to Google), `/api` through `sso-api`
+  through `sso` (no session: a redirect to sign-in), `/api` through `sso-api`
   (no session: a 401 the frontend turns into that redirect). `sso@docker` is
   appended to the middlewares Coolify already put on its router (`gzip`
   below), not put in their place:
