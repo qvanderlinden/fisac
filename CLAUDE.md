@@ -234,10 +234,12 @@ fisac's resource in Coolify needs:
 - the labels below, `<router>` being the name of the router Coolify generated
   for fisac (and its entrypoint and resolver names copied from it). Pages go
   through `sso` (no session: a redirect to Google), `/api` through `sso-api`
-  (no session: a 401 the frontend turns into that redirect):
+  (no session: a 401 the frontend turns into that redirect). `sso@docker` is
+  appended to the middlewares Coolify already put on its router (`gzip`
+  below), not put in their place:
 
 ```
-traefik.http.routers.<router>.middlewares=sso@docker
+traefik.http.routers.<router>.middlewares=gzip,sso@docker
 traefik.http.routers.<router>-api.rule=Host(`fisac.quentinvanderlinden.dev`) && PathPrefix(`/api`)
 traefik.http.routers.<router>-api.priority=100
 traefik.http.routers.<router>-api.entrypoints=https

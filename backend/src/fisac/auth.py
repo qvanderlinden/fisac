@@ -43,7 +43,7 @@ def _jwks_client(url: str) -> jwt.PyJWKClient:
 
 def check_settings(s: Settings) -> None:
     if not s.auth_disabled and not s.google_client_id:
-        raise RuntimeError("GOOGLE_CLIENT_ID est requis quand l'authentification est active")
+        raise RuntimeError("GOOGLE_CLIENT_ID is required when authentication is on")
 
 
 def current_user(authorization: str | None = Header(default=None)) -> User:
