@@ -30,7 +30,9 @@ routers are mounted under `/api`:
 Sign-in is not done here, and access is decided per app. Dex
 (`id.quentinvanderlinden.dev`) says who you are, the shared oauth2-proxy at
 `auth.quentinvanderlinden.dev` (repository `qvanderlinden/auth`, spec
-`docs/superpowers/specs/2026-10-24-sso-google-design.md`) holds the session
+`docs/superpowers/specs/2026-10-25-qv-auth-module-design.md` in that
+repository, which binds; fisac's own 2026-10-24 spec is superseded in part)
+holds the session
 for every `*.quentinvanderlinden.dev` app and passes the ID token on. The
 `qv-auth` module of that repository (`backend/src/fisac/auth.py`) verifies
 the token on every `/api` route (`main.py` mounts each router with
@@ -44,7 +46,10 @@ from `@qvanderlinden/auth-ui` wraps the app in `main.tsx`; a 401 goes through
 `handleUnauthorized` (in `src/api/client.ts`) to the sign-in service, a 403
 pending or rejected reloads the page once so the gate shows its screen; the
 shell shows `UserCard` from the same package. Authentication is on unless
-`AUTH_DISABLED=true`; on, the app refuses to start without `AUTH_ADMIN_EMAILS`.
+`AUTH_DISABLED=true`; on, the app refuses to start without `AUTH_ISSUER` or `AUTH_ADMIN_EMAILS`.
+Removing an address from `AUTH_ADMIN_EMAILS` does not revoke it: the account
+stays approved and admin until an admin revokes it in « utilisateurs » (the
+row is then no longer locked).
 
 The frontend targets this API for the shell, the seven configuration screens
 (société, tiers, catégories, régimes de TVA, régimes ISOC, modèles
@@ -145,6 +150,8 @@ The frontend depends on `@qvanderlinden/ui`, published to GitHub Packages:
 exported, as a GitHub token with `read:packages`. The repo root's gitignored
 `.envrc` sets it; direnv loads it in an interactive shell, otherwise run
 `set -a && . ./.envrc && set +a` first (plain `source` leaves it unexported).
+Once the dependencies are pinned to the `qv-auth` tag, the token also needs
+read access to the private `qvanderlinden/auth` repository.
 
 Vite's dev server proxies `/api/*` to the local uvicorn on `:8000` (see
 `server.proxy` in `frontend/vite.config.ts`), so no CORS setup is needed.
@@ -228,7 +235,8 @@ backend stage installs `qv-auth` from the private `qvanderlinden/auth`
 repository, so the build needs `NODE_AUTH_TOKEN` in the environment (a token
 that also reads that repository). The backend stage hands it to git through
 `GIT_CONFIG_*` variables of the one `uv sync` RUN. It is passed as a BuildKit
-secret, mounted for the `npm ci` step only, and never lands in an image layer.
+secret, mounted for two RUNs only (`npm ci` in the frontend stage and `uv sync`
+in the backend stage), and never lands in an image layer.
 The secret id is `NODE_AUTH_TOKEN`, the variable's own name, because that is
 the id Coolify uses when it passes build variables as secrets.
 
@@ -240,9 +248,11 @@ docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN -t fisac .
 
 Coolify on a VPS, behind Coolify's Traefik, at `fisac.quentinvanderlinden.dev`,
 with the sign-in service of `qvanderlinden/auth` deployed on the same server
-(its README explains how to protect an app, and its deployment order: fisac
-must run qv-auth in production before the sign-in service switches to
-any-account sign-in). Nothing in this repo defines a
+(its README explains how to protect an app, and its deployment order: a
+first install deploys the sign-in resource and the apps together; switching
+later, every app must already contain qv-auth, redeploy the sign-in resource,
+then each app right after, with 401s in between and never `email-domain *`
+while an app checks nothing). Nothing in this repo defines a
 production Postgres instance; ask before assuming one.
 
 fisac's resource in Coolify needs:
