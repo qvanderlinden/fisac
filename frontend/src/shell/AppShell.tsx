@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { X } from 'lucide-react'
+import { UserCard, usePendingCount, useMe } from '@qvanderlinden/auth-ui'
 import { Callout, IconButton, Logo, SidebarNav, cn, type SidebarItem } from '@qvanderlinden/ui'
 import { messageOf } from '../errors'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -8,22 +9,29 @@ import { FiscalYearSwitcher } from './FiscalYearSwitcher'
 import { useFiscalYear } from './FiscalYearContext'
 import { INK_ICON_BUTTON, MobileHeader } from './MobileHeader'
 import { mainView } from './mainView'
-import { NAV, navItemOf } from './nav'
+import { navItemOf, visibleNav } from './nav'
 import { OpenFirstYear } from './OpenFirstYear'
-import { UserCard } from './UserCard'
 
 // SidebarNav has no disabled item: an entry of a later slice gets this
 // placeholder href, which NavLink renders as an inert, muted span.
 const SOON = '#bientot'
 
-const ITEMS: SidebarItem[] = NAV.flatMap((g) => [
-  { group: g.group },
-  ...g.items.map((i) =>
-    i.path
-      ? { value: i.path, label: i.label, icon: i.icon, href: i.path }
-      : { label: i.label, icon: i.icon, href: SOON, badge: 'bientôt' },
-  ),
-])
+function itemsOf(isAdmin: boolean, pending: number): SidebarItem[] {
+  return visibleNav(isAdmin).flatMap((g) => [
+    { group: g.group },
+    ...g.items.map((i) =>
+      i.path
+        ? {
+            value: i.path,
+            label: i.label,
+            icon: i.icon,
+            href: i.path,
+            ...(i.adminOnly && pending > 0 ? { badge: String(pending) } : {}),
+          }
+        : { label: i.label, icon: i.icon, href: SOON, badge: 'bientôt' },
+    ),
+  ])
+}
 
 type NavLinkProps = { href: string; className?: string; children?: ReactNode; onClick?: () => void }
 
@@ -83,6 +91,9 @@ export function AppShell() {
   const mobile = useMediaQuery('(max-width: 640px)')
   const { pathname } = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const isAdmin = useMe().is_admin
+  const pending = usePendingCount('/api/auth')
+  const items = itemsOf(isAdmin, pending)
   const value = navItemOf(pathname)?.path ?? undefined
 
   useEffect(() => {
@@ -103,8 +114,8 @@ export function AppShell() {
             tone="ink"
             className="overflow-y-auto"
             header={<Brand />}
-            footer={<UserCard />}
-            items={ITEMS}
+            footer={<UserCard tone="ink" />}
+            items={items}
             value={value}
             linkAs={NavLink}
           />
@@ -142,8 +153,8 @@ export function AppShell() {
               aria-label="Navigation principale"
               tone="ink"
               className="h-auto w-full flex-1"
-              footer={<UserCard />}
-              items={ITEMS}
+              footer={<UserCard tone="ink" />}
+              items={items}
               value={value}
               onChange={() => setMenuOpen(false)}
               linkAs={NavLink}

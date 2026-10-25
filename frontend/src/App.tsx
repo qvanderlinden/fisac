@@ -12,6 +12,7 @@ import { SalesScreen } from './screens/sales/SalesScreen'
 import { ResultScreen } from './screens/result/ResultScreen'
 import { VatScreen } from './screens/vat/VatScreen'
 import { TiersScreen } from './screens/tiers/TiersScreen'
+import { UsersScreen } from './screens/users/UsersScreen'
 import { AppShell } from './shell/AppShell'
 import { FiscalYearProvider } from './shell/FiscalYearContext'
 
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="regimes-isoc" element={<IsocSchemesScreen />} />
             <Route path="modeles-amortissement" element={<DepreciationModelsScreen />} />
             <Route path="moyens-paiement" element={<PaymentMethodsScreen />} />
+            <Route path="utilisateurs" element={<UsersScreen />} />
             <Route path="*" element={<Navigate to="/societe" replace />} />
           </Route>
         </Routes>

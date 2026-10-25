@@ -1,4 +1,4 @@
-// End-to-end smoke of slices A and B. Needs the stack running: uvicorn on :8000 and
+// End-to-end smoke of slices A and B and the user administration. Needs the stack running: uvicorn on :8000 and
 // `npm run dev` on :5173, against a fresh database. Saves screenshots under
 // smoke/ and exits non-zero on a failed check or a console error.
 import { mkdirSync } from 'node:fs'
@@ -218,6 +218,19 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     }
     await shot(name)
   }
+
+  // The user administration: the dev user (AUTH_DISABLED) is listed as an admin.
+  await page.goto(`${BASE}/utilisateurs`)
+  await settle()
+  await page.waitForTimeout(300)
+  // The screen opens on the pending requests; the dev user is approved.
+  await page.getByRole('tab', { name: /^acceptés/ }).click()
+  await page.getByText('dev@localhost').first().waitFor()
+  const users = await page.locator('main').innerText()
+  check(users.includes('dev@localhost') && /admin/.test(users), `utilisateurs: dev@localhost listed with the admin tag (${width})`)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  check(overflow <= 1, `utilisateurs: no horizontal overflow at ${width} (${overflow}px over)`)
+  await shot('utilisateurs')
   await page.close()
 }
 

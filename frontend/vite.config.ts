@@ -34,6 +34,8 @@ export default defineConfig({
       },
     }),
   ],
+  // The linked auth-ui package has its own node_modules: one React only.
+  resolve: { dedupe: ['react', 'react-dom'] },
   server: {
     // Reached over plain http://localhost:5173 in development. Serving this
     // from a remote dev workspace behind a proxy additionally needs `host`

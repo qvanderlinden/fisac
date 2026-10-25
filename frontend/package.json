@@ -12,6 +12,7 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@qvanderlinden/auth-ui": "file:../../auth/ui",
     "@qvanderlinden/ui": "^0.1.0",
     "@tailwindcss/vite": "^4.3.3",
     "lucide-react": "^1.26.0",

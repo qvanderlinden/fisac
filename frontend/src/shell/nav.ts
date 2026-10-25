@@ -22,6 +22,8 @@ export interface NavItem {
   path: string | null
   label: string
   icon: LucideIcon
+  /** Shown to administrators only. */
+  adminOnly?: boolean
 }
 
 // The sidebar of the canvas's `Main` artboard, in its order and with its
@@ -63,9 +65,15 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { path: '/regimes-isoc', label: 'régimes isoc', icon: Landmark },
       { path: '/modeles-amortissement', label: 'modèles d’amortissement', icon: Package },
       { path: '/moyens-paiement', label: 'moyens de paiement', icon: CreditCard },
+      { path: '/utilisateurs', label: 'utilisateurs', icon: Users, adminOnly: true },
     ],
   },
 ]
+
+/** The nav without the entries reserved to administrators, unless `isAdmin`. */
+export function visibleNav(isAdmin: boolean): typeof NAV {
+  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => isAdmin || !i.adminOnly) }))
+}
 
 /** The routes that work without a fiscal year: the configuration group's. */
 export const CONFIGURATION_PATHS: string[] = NAV.filter((g) => g.group === 'configuration').flatMap((g) =>

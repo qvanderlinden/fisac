@@ -1,4 +1,4 @@
-import { signInUrl } from '../auth'
+import { handleUnauthorized } from '@qvanderlinden/auth-ui'
 import type { ApiError } from './types'
 
 /** A non-2xx response, as an Error (so it keeps a stack) carrying the `ApiError` shape. */
@@ -54,23 +54,24 @@ export function toApiError(status: number, statusText: string, body: string): Ap
   }
 }
 
-const SIGN_IN_AT = 'fisac.signInAt'
+let reloaded = false
 
 /**
- * Whether the browser was sent to sign in less than a minute ago; records
- * this attempt otherwise. A 401 right after signing in means the API refuses
- * a session the sign-in service accepts (another client ID, a clock off):
- * sending the browser back would loop, so the error is shown instead.
+ * A 403 `pending` or `rejected` means the access changed since the page
+ * loaded: reload so the gate shows the right screen. At most once per page
+ * load, so a refusal that persists cannot loop.
  */
-function signInJustTried(now: number): boolean {
+function reloadOnAccessChange(status: number, body: string): void {
+  if (status !== 403 || reloaded) return
+  let code: unknown
   try {
-    const last = Number(sessionStorage.getItem(SIGN_IN_AT))
-    if (now - last < 60_000) return true
-    sessionStorage.setItem(SIGN_IN_AT, String(now))
+    code = (JSON.parse(body) as { code?: unknown } | null)?.code
   } catch {
-    // No storage (private window): no guard, the redirect still happens.
+    return
   }
-  return false
+  if (code !== 'pending' && code !== 'rejected') return
+  reloaded = true
+  location.reload()
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -79,18 +80,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (response.status === 401) {
-    // The session is gone: sign in again, then come back here. The
-    // navigation must leave this origin, since the service worker answers a
-    // reload from its cache without asking the server.
-    const url = signInUrl(location.href)
-    if (url && !signInJustTried(Date.now())) {
-      location.assign(url)
-      return new Promise<never>(() => {})
-    }
-  }
+  // The session is gone: sign in again, then come back here.
+  const leaving = handleUnauthorized(response)
+  if (leaving) return leaving
   if (!response.ok) {
-    throw new HttpError(toApiError(response.status, response.statusText, await response.text()))
+    const text = await response.text()
+    reloadOnAccessChange(response.status, text)
+    throw new HttpError(toApiError(response.status, response.statusText, text))
   }
   // A DELETE answers 204 with no body.
   if (response.status === 204) return undefined as T

@@ -82,3 +82,38 @@ describe('request on a 401', () => {
     expect(assign).not.toHaveBeenCalled()
   })
 })
+
+describe('request on a 403', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  async function setup(code: string) {
+    vi.resetModules() // the once-per-page-load flag is module state
+    const { api: fresh } = await import('./client')
+    const reload = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ detail: 'Accès refusé', code }), { status: 403 })),
+    )
+    vi.stubGlobal('location', { href: 'http://localhost:5173/ventes', hostname: 'localhost', origin: 'http://localhost:5173', reload })
+    return { fresh, reload }
+  }
+
+  it('reloads once on a 403 rejected', async () => {
+    const { fresh, reload } = await setup('rejected')
+    await expect(fresh.get('/company')).rejects.toMatchObject({ name: 'HttpError', status: 403 })
+    await expect(fresh.get('/company')).rejects.toMatchObject({ name: 'HttpError', status: 403 })
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it('reloads on a 403 pending', async () => {
+    const { fresh, reload } = await setup('pending')
+    await expect(fresh.get('/company')).rejects.toMatchObject({ status: 403 })
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it('a 403 forbidden throws HttpError', async () => {
+    const { fresh, reload } = await setup('forbidden')
+    await expect(fresh.get('/company')).rejects.toMatchObject({ name: 'HttpError', status: 403 })
+    expect(reload).not.toHaveBeenCalled()
+  })
+})

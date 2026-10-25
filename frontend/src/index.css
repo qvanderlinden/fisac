@@ -2,3 +2,4 @@
    roles and base styles. fisac defines no colours of its own. */
 @import "tailwindcss";
 @import "@qvanderlinden/ui/styles.css";
+@import "@qvanderlinden/auth-ui/styles.css";
