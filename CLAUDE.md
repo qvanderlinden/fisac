@@ -250,8 +250,8 @@ database's own owner — e.g. a managed Postgres provider's auto-created user).
 
 The root `Dockerfile` builds a self-contained image (frontend build → uv
 sync → final), whose CMD runs `alembic upgrade head` then uvicorn on `:8000`.
-It expects `DATABASE_URL` in the environment and reaches Postgres over the
-network — it does not start one.
+It expects `DATABASE_URL`, `CLERK_JWT_KEY` and `CLERK_AUTHORIZED_PARTIES` in the
+environment and reaches Postgres over the network — it does not start one.
 
 The frontend stage installs `@qvanderlinden/ui` from GitHub Packages, so the
 build needs `NODE_AUTH_TOKEN` in the environment. It is passed as a BuildKit
@@ -273,7 +273,19 @@ Coolify, at `coolify.quentinvanderlinden.dev`: application `fisac` in project
 - "Use Docker Build Secrets" is on, since the Dockerfile mounts its build variables as
   BuildKit secrets. Build variables: `NODE_AUTH_TOKEN`, `VITE_CLERK_PUBLISHABLE_KEY`.
   Runtime variables: `DATABASE_URL`, `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`.
-- Postgres is `fisac-postgres`, reachable only inside Coolify's network, with no
+- Postgres is the Coolify database `postgres` (`postgres:18`, container and host
+  `cpvr8bngydjh7lbiq5dzataf`), reachable only inside Coolify's network, with no
   scheduled backups (the owner's decision). Set a database's password when creating
   it: the volume is initialised at once, and updating the password later changes
   only Coolify's record.
+- It is shared by the `Personal Tools` applications, with one database and one
+  non-superuser owner role per application: `fisac` and `budget`. `PUBLIC` has no
+  rights on any database, so a role reaches only its own. A new application gets its
+  own role and database, with `REVOKE ALL ON DATABASE ... FROM PUBLIC`. Fisac's
+  migrations must not need superuser rights.
+- Admin work goes through the superuser `postgres`, whose password is on the database's
+  Coolify page, or without one from the server:
+  `ssh qv docker exec -it cpvr8bngydjh7lbiq5dzataf psql -U postgres`.
+- A different container on the same network is also named `postgres` (a compose
+  project outside Coolify, with Dex's `dex_db`). Don't use that name as a host for this
+  database.
