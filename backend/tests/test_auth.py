@@ -1,6 +1,7 @@
 import re
 import time
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -85,6 +86,20 @@ async def test_refused(anon_client, headers):
     assert response.json() == {"detail": "Non authentifié"}
 
 
+@pytest.mark.parametrize("token", ["mt_x", "ak_x", "oat_x", "m2m_x"])
+async def test_machine_tokens_never_reach_clerk(anon_client, monkeypatch, token):
+    calls = []
+
+    def post(self, url, **kwargs):
+        calls.append(url)
+        raise httpx.ConnectError("no network in this test")
+
+    monkeypatch.setattr(httpx.Client, "post", post)
+    response = await anon_client.get(PATH, headers=_bearer(token))
+    assert calls == []
+    assert response.status_code == 401
+
+
 async def test_every_api_route_refuses_anonymous(anon_client):
     # From the OpenAPI schema: app.routes doesn't flatten included routers.
     checked = 0
@@ -111,6 +126,21 @@ def test_config_garbage_key_fails(monkeypatch):
     monkeypatch.setattr(settings, "clerk_jwt_key", "not a key")
     with pytest.raises(RuntimeError, match="CLERK_JWT_KEY"):
         check_auth_config()
+
+
+@pytest.mark.parametrize(
+    "parties",
+    ["https://fisac.test/", "fisac.test", '"https://fisac.test"', "https://fisac.test/app", f"{ORIGIN}, fisac.test"],
+)
+def test_config_party_not_an_origin_fails(monkeypatch, parties):
+    monkeypatch.setattr(settings, "clerk_authorized_parties", parties)
+    with pytest.raises(RuntimeError, match="CLERK_AUTHORIZED_PARTIES"):
+        check_auth_config()
+
+
+def test_config_several_origins(monkeypatch):
+    monkeypatch.setattr(settings, "clerk_authorized_parties", f"https://fisac.test , {ORIGIN}")
+    check_auth_config()
 
 
 def test_config_empty_parties_fails(monkeypatch):
