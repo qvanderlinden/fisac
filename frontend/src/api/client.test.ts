@@ -1,5 +1,59 @@
-import { describe, expect, it } from 'vitest'
-import { toApiError } from './client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { messageOf } from '../errors'
+import { api, HttpError, setTokenGetter, toApiError } from './client'
+
+describe('the session token', () => {
+  const fetchOk = () => {
+    const mock = vi.fn(async (_url: string, _init: RequestInit) => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', mock)
+    return mock
+  }
+  const headersOf = (mock: ReturnType<typeof fetchOk>) => new Headers(mock.mock.calls[0][1].headers)
+
+  afterEach(() => {
+    setTokenGetter(null)
+    vi.unstubAllGlobals()
+  })
+
+  it('sends the bearer token from the getter', async () => {
+    const mock = fetchOk()
+    setTokenGetter(async () => 'tok')
+    await api.post('/sales', { a: 1 })
+    expect(headersOf(mock).get('Authorization')).toBe('Bearer tok')
+    expect(headersOf(mock).get('Content-Type')).toBe('application/json')
+  })
+
+  it('sends no header without a getter', async () => {
+    const mock = fetchOk()
+    await api.get('/sales')
+    expect(headersOf(mock).has('Authorization')).toBe(false)
+  })
+
+  it('sends no header when the getter has no token', async () => {
+    const mock = fetchOk()
+    setTokenGetter(async () => null)
+    await api.get('/sales')
+    expect(headersOf(mock).has('Authorization')).toBe(false)
+  })
+
+  it('a 401 is an ordinary HttpError', async () => {
+    vi.stubGlobal('fetch', async () => new Response('{"detail":"Non authentifié"}', { status: 401 }))
+    const error = await api.get('/sales').catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(HttpError)
+    expect((error as HttpError).status).toBe(401)
+    expect(messageOf(error)).toBe('Non authentifié')
+  })
+
+  it('a getter failure reads as the server not responding, and sends nothing', async () => {
+    const mock = fetchOk()
+    setTokenGetter(async () => {
+      throw new Error('ClerkOfflineError')
+    })
+    const error = await api.get('/sales').catch((e: unknown) => e)
+    expect(messageOf(error)).toMatch(/^Le serveur ne répond pas/)
+    expect(mock).not.toHaveBeenCalled()
+  })
+})
 
 describe('toApiError', () => {
   it('reads a 422 into fields keyed by the last loc part', () => {
