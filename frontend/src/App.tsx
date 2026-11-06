@@ -14,34 +14,37 @@ import { ResultScreen } from './screens/result/ResultScreen'
 import { VatScreen } from './screens/vat/VatScreen'
 import { TiersScreen } from './screens/tiers/TiersScreen'
 import { AppShell } from './shell/AppShell'
+import { AuthGate } from './shell/AuthGate'
 import { FiscalYearProvider } from './shell/FiscalYearContext'
 
 export default function App() {
   return (
     <BrowserRouter>
-      <FiscalYearProvider>
-        <Routes>
-          <Route element={<AppShell />}>
-            {/* The shell shows the first-year step on "/" while no year exists; this redirect renders only once one does. */}
-            <Route index element={<Navigate to="/societe" replace />} />
-            <Route path="ventes/*" element={<SalesScreen />} />
-            <Route path="achats/*" element={<PurchasesScreen />} />
-            <Route path="immobilisations/*" element={<FixedAssetsScreen />} />
-            <Route path="journaux/*" element={<JournalsScreen />} />
-            <Route path="tva/*" element={<VatScreen />} />
-            <Route path="isoc/*" element={<IsocScreen />} />
-            <Route path="resultat/*" element={<ResultScreen />} />
-            <Route path="societe" element={<CompanyScreen />} />
-            <Route path="tiers" element={<TiersScreen />} />
-            <Route path="categories" element={<CategoriesScreen />} />
-            <Route path="regimes-tva" element={<VatSchemesScreen />} />
-            <Route path="regimes-isoc" element={<IsocSchemesScreen />} />
-            <Route path="modeles-amortissement" element={<DepreciationModelsScreen />} />
-            <Route path="moyens-paiement" element={<PaymentMethodsScreen />} />
-            <Route path="*" element={<Navigate to="/societe" replace />} />
-          </Route>
-        </Routes>
-      </FiscalYearProvider>
+      <AuthGate>
+        <FiscalYearProvider>
+          <Routes>
+            <Route element={<AppShell />}>
+              {/* The shell shows the first-year step on "/" while no year exists; this redirect renders only once one does. */}
+              <Route index element={<Navigate to="/societe" replace />} />
+              <Route path="ventes/*" element={<SalesScreen />} />
+              <Route path="achats/*" element={<PurchasesScreen />} />
+              <Route path="immobilisations/*" element={<FixedAssetsScreen />} />
+              <Route path="journaux/*" element={<JournalsScreen />} />
+              <Route path="tva/*" element={<VatScreen />} />
+              <Route path="isoc/*" element={<IsocScreen />} />
+              <Route path="resultat/*" element={<ResultScreen />} />
+              <Route path="societe" element={<CompanyScreen />} />
+              <Route path="tiers" element={<TiersScreen />} />
+              <Route path="categories" element={<CategoriesScreen />} />
+              <Route path="regimes-tva" element={<VatSchemesScreen />} />
+              <Route path="regimes-isoc" element={<IsocSchemesScreen />} />
+              <Route path="modeles-amortissement" element={<DepreciationModelsScreen />} />
+              <Route path="moyens-paiement" element={<PaymentMethodsScreen />} />
+              <Route path="*" element={<Navigate to="/societe" replace />} />
+            </Route>
+          </Routes>
+        </FiscalYearProvider>
+      </AuthGate>
     </BrowserRouter>
   )
 }

@@ -10,7 +10,9 @@ WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN --mount=type=secret,id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN npm ci
 COPY frontend/ ./
-RUN npm run build
+# The publishable key is public, but Coolify passes build variables as secrets, and
+# it is baked in here: `required` fails the build rather than ship a blank page.
+RUN --mount=type=secret,id=VITE_CLERK_PUBLISHABLE_KEY,env=VITE_CLERK_PUBLISHABLE_KEY,required=true npm run build
 
 FROM python:3.14-slim AS backend-build
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /usr/local/bin/

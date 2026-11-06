@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { Callout, IconButton, Logo, SidebarNav, cn, type SidebarItem } from '@qvanderlinden/ui'
 import { messageOf } from '../errors'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { AccountControl } from './AccountControl'
 import { FiscalYearSwitcher } from './FiscalYearSwitcher'
 import { useFiscalYear } from './FiscalYearContext'
 import { INK_ICON_BUTTON, MobileHeader } from './MobileHeader'
@@ -105,6 +106,7 @@ export function AppShell() {
             items={ITEMS}
             value={value}
             linkAs={NavLink}
+            footer={<AccountControl />}
           />
         </aside>
         <main className="flex min-w-0 flex-1 flex-col p-8">
@@ -144,6 +146,7 @@ export function AppShell() {
               value={value}
               onChange={() => setMenuOpen(false)}
               linkAs={NavLink}
+              footer={<AccountControl />}
             />
           </div>
           <button
