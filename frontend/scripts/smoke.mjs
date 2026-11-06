@@ -1,8 +1,10 @@
 // End-to-end smoke of slices A and B and of the ISOC slice. Needs the stack running: uvicorn on :8000 and
-// `npm run dev` on :5173, against a fresh database. Saves screenshots under
+// `npm run dev` on :5173, against a fresh database, and a Clerk development instance:
+// CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, SMOKE_EMAIL, SMOKE_PASSWORD. Saves screenshots under
 // smoke/ and exits non-zero on a failed check or a console error.
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { clerkSetup, setupClerkTestingToken } from '@clerk/testing/playwright'
 import { chromium } from 'playwright'
 
 const BASE = process.env.SMOKE_URL ?? 'http://localhost:5173'
@@ -68,6 +70,25 @@ async function checkOverflow(page, name) {
   check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
 }
 
+/**
+ * Signs a browser context in through the hosted page, the way a person does: a deep link
+ * while signed out goes to Clerk, and comes back to that link.
+ */
+async function signIn(context) {
+  await setupClerkTestingToken({ context })
+  const page = await context.newPage()
+  await page.goto(`${BASE}/ventes`)
+  await page.waitForURL((url) => url.origin !== new URL(BASE).origin)
+  check(new URL(page.url()).searchParams.get('redirect_url')?.endsWith('/ventes'), 'signed out: /ventes goes to Clerk and asks to come back')
+  await page.getByLabel(/email/i).fill(process.env.SMOKE_EMAIL)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.getByLabel(/^password/i).fill(process.env.SMOKE_PASSWORD)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.waitForURL(`${BASE}/ventes`)
+  check(true, 'signed in: back on /ventes')
+  await page.close()
+}
+
 async function closeDialog(page) {
   await page.getByRole('button', { name: 'Fermer' }).first().click()
   await page.waitForLoadState('networkidle')
@@ -81,9 +102,19 @@ try {
   browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
 }
 
+check((await fetch(`${BASE}/api/company`)).status === 401, 'signed out: the API answers 401')
+await clerkSetup()
+const context = await browser.newContext()
+await signIn(context)
+const newPage = async (width, height) => {
+  const page = await context.newPage()
+  await page.setViewportSize({ width, height })
+  return page
+}
+
 // Both empty states first: opening the year (below, at the first width) makes "/" redirect.
 for (const [width, height] of WIDTHS) {
-  const page = await browser.newPage({ viewport: { width, height } })
+  const page = await newPage(width, height)
   page.on('console', (m) => m.type() === 'error' && check(false, `console error (${width}): ${m.text()}`))
   await page.goto(`${BASE}/`)
   await page.waitForLoadState('networkidle')
@@ -93,7 +124,7 @@ for (const [width, height] of WIDTHS) {
 }
 
 for (const [i, [width, height]] of WIDTHS.entries()) {
-  const page = await browser.newPage({ viewport: { width, height } })
+  const page = await newPage(width, height)
   page.on('console', (m) => m.type() === 'error' && check(false, `console error (${width}): ${m.text()}`))
   page.on('pageerror', (e) => check(false, `page error (${width}): ${e.message}`))
   const shot = (name) => page.screenshot({ path: `${OUT}${name}-${width}.png`, fullPage: true })

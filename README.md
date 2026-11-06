@@ -82,7 +82,7 @@ configuration anywhere.
 You need a Postgres you provide yourself and a `DATABASE_URL` pointing at it:
 
 ```bash
-cp .env.example .env      # then set DATABASE_URL and FISAC_DB_PASSWORD
+cp .env.example .env      # then set DATABASE_URL and the CLERK_ settings
 
 cd backend && uv run alembic upgrade head   # once, and after each new migration
 
@@ -142,14 +142,16 @@ privilege on the database (true by default for a database's own owner).
 ## Building the image
 
 ```bash
-docker build -t fisac .
+docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN \
+  --secret id=VITE_CLERK_PUBLISHABLE_KEY,env=VITE_CLERK_PUBLISHABLE_KEY -t fisac .
 ```
 
-The image expects `DATABASE_URL` in the environment and reaches Postgres over
+The image expects `DATABASE_URL`, `CLERK_JWT_KEY` and `CLERK_AUTHORIZED_PARTIES` in
+the environment and reaches Postgres over
 the network — it does not start one. Its CMD applies migrations, then serves on
 `:8000`.
 
 ## Deployment
 
-Not configured. The image built above is the only deployable artifact; how it
-gets TLS, a hostname, and a production Postgres instance is not settled.
+Coolify, at `https://fisac.quentinvanderlinden.dev`: every push to `main` deploys and
+applies its migrations. See `CLAUDE.md`.

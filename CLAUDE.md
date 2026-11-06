@@ -125,9 +125,32 @@ the `/api/*` routes. `main.py` guards the frontend mount with
 `if dist_dir.exists()`, since `FRONTEND_DIST_DIR` is only populated inside the
 built image — local `uvicorn --reload` runs API-only.
 
+## Authentication
+
+Clerk does authentication only; authorization is each application's business, and
+fisac has no roles. All the owner's applications share one Clerk application, on
+subdomains of `quentinvanderlinden.dev`, so logging in once covers them all.
+
+- `backend/src/fisac/auth.py`: `require_user` guards every route through the one
+  `/api` parent router in `main.py`. It verifies the bearer token offline with
+  `CLERK_JWT_KEY` (the instance's PEM public key) and accepts only tokens for
+  `CLERK_AUTHORIZED_PARTIES` (comma-separated origins). Cookies are never read. The
+  app refuses to start without both; Alembic needs neither.
+- `frontend/src/shell/AuthGate.tsx` renders the app only once signed in, and sends
+  others to Clerk's hosted sign-in page (English only, Clerk doesn't translate it). It
+  registers the token getter for `api/client.ts`. A 401 is an ordinary error and never
+  redirects: only Clerk saying "signed out" does. The publishable key is
+  `VITE_CLERK_PUBLISHABLE_KEY`, in the gitignored `frontend/.env.local` locally.
+- There is no switch to turn this off. Tests get a signed-in `client` fixture by
+  overriding the dependency in-process; `anon_client` leaves it real.
+- **Known limit:** any account in the shared Clerk user list has full access to the
+  books. Add a per-application access check here before inviting anyone who should
+  not see them. Sign-up must stay Invite-only (or Waitlist), never public.
+
 ## Local development
 
-Needs a reachable Postgres and `DATABASE_URL` pointing at it (see `.env`).
+Needs a reachable Postgres and `DATABASE_URL` pointing at it (see `.env`), and the
+Clerk settings of a development instance (see `.env.example`).
 Nothing in this repo starts one.
 
 ```bash
@@ -163,7 +186,11 @@ Backend tests: `uv run pytest` runs the API tests against `TEST_DATABASE_URL`
 must be allowed to create databases, the suite creates and drops its own).
 
 End-to-end smoke: `cd frontend && npm run smoke` drives Chromium (Playwright,
-pinned to the version matching `/opt/pw-browsers` Chromium 1194) through the
+pinned to the version matching `/opt/pw-browsers` Chromium 1194) through a
+signed-out visit and a real sign-in on Clerk's hosted page (it needs a development
+instance with email and password enabled, and `CLERK_PUBLISHABLE_KEY`,
+`CLERK_SECRET_KEY`, `SMOKE_EMAIL`, `SMOKE_PASSWORD`; the secret key is used by
+the smoke only, never by the app), then the
 empty state, opening the first fiscal year, the seven configuration screens,
 then a sale (1 000 at Ventes 21 %), a purchase (1 500 at Achats 21 % ·
 récupérable) and the fixed asset taking that line over, checked in the journal,
@@ -233,11 +260,20 @@ The secret id is `NODE_AUTH_TOKEN`, the variable's own name, because that is
 the id Coolify uses when it passes build variables as secrets.
 
 ```bash
-docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN -t fisac .
+docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN \
+  --secret id=VITE_CLERK_PUBLISHABLE_KEY,env=VITE_CLERK_PUBLISHABLE_KEY -t fisac .
 ```
 
 ## Deployment
 
-Not configured. The image built above is the only deployable artifact;
-nothing in this repo defines TLS, a hostname, or a production Postgres
-instance. Ask before assuming any of it.
+Coolify, at `coolify.quentinvanderlinden.dev`: application `fisac` in project
+`Personal Tools`, serving `https://fisac.quentinvanderlinden.dev`. **Every push to
+`main` deploys and applies its migrations**, through the `qv-coolify` GitHub App.
+
+- "Use Docker Build Secrets" is on, since the Dockerfile mounts its build variables as
+  BuildKit secrets. Build variables: `NODE_AUTH_TOKEN`, `VITE_CLERK_PUBLISHABLE_KEY`.
+  Runtime variables: `DATABASE_URL`, `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`.
+- Postgres is `fisac-postgres`, reachable only inside Coolify's network, with no
+  scheduled backups (the owner's decision). Set a database's password when creating
+  it: the volume is initialised at once, and updating the password later changes
+  only Coolify's record.
