@@ -1,6 +1,6 @@
 // End-to-end smoke of slices A and B and of the ISOC slice. Needs the stack running: uvicorn on :8000 and
 // `npm run dev` on :5173, against a fresh database, and a Clerk development instance:
-// CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, SMOKE_EMAIL, SMOKE_PASSWORD. Saves screenshots under
+// CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, SMOKE_EMAIL (an existing user). Saves screenshots under
 // smoke/ and exits non-zero on a failed check or a console error.
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -70,21 +70,49 @@ async function checkOverflow(page, name) {
   check(wide <= 1, `${name}: no horizontal overflow at 390 (${wide}px over)`)
 }
 
+/** Polls the URL: Clerk's hosted page aborts a navigation and hops on the way, which fails `page.waitForURL`. */
+async function waitForUrl(page, matches) {
+  const deadline = Date.now() + 30_000
+  while (!matches(new URL(page.url()))) {
+    if (Date.now() > deadline) throw new Error(`still on ${page.url()}`)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+}
+
+/** The API's JSON as the page's signed-in user: the API refuses a request without their token. */
+async function getJson(page, path) {
+  const token = await page.evaluate(() => window.Clerk.session.getToken())
+  const response = await page.request.get(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  return response.json()
+}
+
+/** A one-time sign-in ticket for the smoke's user, from Clerk's Backend API. */
+async function signInTicket() {
+  const clerkApi = async (path, init) => {
+    const headers = { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`, 'Content-Type': 'application/json' }
+    const response = await fetch(`https://api.clerk.com/v1${path}`, { ...init, headers })
+    return response.json()
+  }
+  const [user] = await clerkApi(`/users?email_address=${encodeURIComponent(process.env.SMOKE_EMAIL)}`)
+  const { token } = await clerkApi('/sign_in_tokens', { method: 'POST', body: JSON.stringify({ user_id: user.id }) })
+  return token
+}
+
 /**
- * Signs a browser context in through the hosted page, the way a person does: a deep link
- * while signed out goes to Clerk, and comes back to that link.
+ * Signs a browser context in on the hosted page: a deep link while signed out goes to
+ * Clerk and comes back to that link. A ticket stands in for typing a password, which
+ * would also hit Clerk's new-device code.
  */
 async function signIn(context) {
   await setupClerkTestingToken({ context })
   const page = await context.newPage()
-  await page.goto(`${BASE}/ventes`)
-  await page.waitForURL((url) => url.origin !== new URL(BASE).origin)
-  check(new URL(page.url()).searchParams.get('redirect_url')?.endsWith('/ventes'), 'signed out: /ventes goes to Clerk and asks to come back')
-  await page.getByLabel(/email/i).fill(process.env.SMOKE_EMAIL)
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await page.getByLabel(/^password/i).fill(process.env.SMOKE_PASSWORD)
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await page.waitForURL(`${BASE}/ventes`)
+  page.goto(`${BASE}/ventes`).catch(() => {}) // superseded by the app's own redirect
+  await page.getByLabel('Email address').waitFor()
+  const hosted = new URL(page.url())
+  check(hosted.searchParams.get('redirect_url')?.endsWith('/ventes'), 'signed out: /ventes goes to Clerk and asks to come back')
+  const params = new URLSearchParams({ __clerk_ticket: await signInTicket(), redirect_url: `${BASE}/ventes` })
+  page.goto(`${hosted.origin}/sign-in?${params}`).catch(() => {}) // superseded too
+  await waitForUrl(page, (url) => url.href === `${BASE}/ventes`)
   check(true, 'signed in: back on /ventes')
   await page.close()
 }
@@ -98,8 +126,8 @@ let browser
 try {
   browser = await chromium.launch()
 } catch (e) {
-  console.warn(`default Chromium launch failed (${e.message.split('\n')[0]}); using /opt/pw-browsers/chromium`)
-  browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+  console.warn(`default Chromium launch failed (${e.message.split('\n')[0]}); using the fallback`)
+  browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROMIUM ?? '/opt/pw-browsers/chromium' })
 }
 
 check((await fetch(`${BASE}/api/company`)).status === 401, 'signed out: the API answers 401')
@@ -255,10 +283,10 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
     await settle()
     await va1.getByRole('checkbox', { name: 'Payé' }).click()
     await settle()
-    const years = await (await page.request.get(`${BASE}/api/fiscal-years`)).json()
+    const years = await getJson(page, `/api/fiscal-years`)
     const fy = years.find((y) => y.end_date.startsWith(String(YEAR)))
     // The tick saves through the serial queue: poll the API until the payment has landed.
-    const readIsoc = async () => (await page.request.get(`${BASE}/api/fiscal-years/${fy.id}/isoc`)).json()
+    const readIsoc = async () => getJson(page, `/api/fiscal-years/${fy.id}/isoc`)
     let isoc = await readIsoc()
     for (let tries = 0; Number(isoc.paid_total) !== 2000 && tries < 50; tries++) {
       await new Promise((resolve) => setTimeout(resolve, 100))
@@ -282,7 +310,7 @@ for (const [i, [width, height]] of WIDTHS.entries()) {
 
     // The paid VA is a movement of the financial journal of its payment method's account:
     // found through the API, then that account's tab is opened (it need not be the default one).
-    const journals = await (await page.request.get(`${BASE}/api/fiscal-years/${fy.id}/journals`)).json()
+    const journals = await getJson(page, `/api/fiscal-years/${fy.id}/journals`)
     const vaJournal = journals.find((j) => j.movements.some((m) => m.reference === 'VA1 · ISOC'))
     check(vaJournal !== undefined, 'journal: the API has the VA1 · ISOC movement')
     await page.goto(`${BASE}/journaux`)

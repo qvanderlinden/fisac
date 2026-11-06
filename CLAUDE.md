@@ -187,10 +187,10 @@ must be allowed to create databases, the suite creates and drops its own).
 
 End-to-end smoke: `cd frontend && npm run smoke` drives Chromium (Playwright,
 pinned to the version matching `/opt/pw-browsers` Chromium 1194) through a
-signed-out visit and a real sign-in on Clerk's hosted page (it needs a development
-instance with email and password enabled, and `CLERK_PUBLISHABLE_KEY`,
-`CLERK_SECRET_KEY`, `SMOKE_EMAIL`, `SMOKE_PASSWORD`; the secret key is used by
-the smoke only, never by the app), then the
+signed-out visit and a sign-in on Clerk's hosted page with a one-time ticket (it
+needs a development instance, and `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and
+`SMOKE_EMAIL` naming an existing user; the secret key is used by the smoke only,
+never by the app; `SMOKE_CHROMIUM` overrides the fallback browser path), then the
 empty state, opening the first fiscal year, the seven configuration screens,
 then a sale (1 000 at Ventes 21 %), a purchase (1 500 at Achats 21 % ·
 récupérable) and the fixed asset taking that line over, checked in the journal,

@@ -264,12 +264,17 @@ they go on a short handover list and are not verified here: session sharing with
 sibling, and sign-out reaching siblings. The redirect from an installed PWA is
 checked on the production address. (Builder's call.)
 
-## To verify while building
+## Verified while building
 
-- How soon a removed user or a signed-out session stops working. The session
-  token is short-lived, but the docs read do not state the default lifetime.
-- That signing out of fisac signs out of sibling applications (expected, as they
-  share a session; not confirmed).
+- A session token lasts 60 seconds on the development instance. After signing out,
+  an already issued token keeps working until it expires, then gets a 401, because
+  verification is offline. So signing out, or removing someone, takes effect on the
+  API within about a minute. Check the lifetime on the production instance.
+- Clerk's "client trust" asks for an emailed code when a password sign-in comes from a
+  new device.
+
+Still open, needing a second application: that signing out of fisac signs out of
+sibling applications (expected, as they share a session).
 
 ## Left to the builder
 
