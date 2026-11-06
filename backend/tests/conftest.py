@@ -19,6 +19,7 @@ from sqlalchemy import make_url, select, text  # noqa: E402
 
 import fisac.models  # noqa: E402, F401
 from fisac import db  # noqa: E402
+from fisac.auth import require_user  # noqa: E402
 from fisac.db import Base  # noqa: E402
 from fisac.main import app  # noqa: E402
 from fisac.models import FiscalYear, Purchase, PurchaseLine, Sale  # noqa: E402
@@ -95,10 +96,19 @@ async def reset_database():
 
 
 @pytest_asyncio.fixture
-async def client():
+async def anon_client():
+    """The API as it runs: `require_user` is real, so the test brings its own token."""
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest_asyncio.fixture
+async def client(anon_client):
+    """A signed-in client: `require_user` is replaced, in-process only."""
+    app.dependency_overrides[require_user] = lambda: "user_test"
+    yield anon_client
+    app.dependency_overrides.pop(require_user)
 
 
 @pytest_asyncio.fixture

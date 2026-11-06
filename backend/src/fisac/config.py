@@ -9,6 +9,11 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://fisac:fisac@localhost:5432/fisac"
 
+    # Clerk (see auth.py): the instance's PEM public key, and the comma-separated
+    # origins whose session tokens this app accepts. The app won't start without them.
+    clerk_jwt_key: str = ""
+    clerk_authorized_parties: str = ""
+
     # OpenRouter (LLM-assisted flow generation). Key lives only in .env; the
     # default model is a free-tier slug (rotates - override via
     # OPENROUTER_MODEL if it disappears). base_url is overridable so
