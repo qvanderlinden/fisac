@@ -53,10 +53,34 @@ export function toApiError(status: number, statusText: string, body: string): Ap
   }
 }
 
+type TokenGetter = () => Promise<string | null>
+
+let getToken: TokenGetter | null = null
+
+/** Where requests get the session token: a plain module can't call Clerk's hooks, so `AuthGate` registers it. */
+export function setTokenGetter(get: TokenGetter | null) {
+  getToken = get
+}
+
+/** The Authorization header. A token that can't be fetched fails like `fetch` itself, as the server not responding. */
+async function authorization(): Promise<Record<string, string>> {
+  if (!getToken) return {}
+  let token: string | null
+  try {
+    token = await getToken()
+  } catch {
+    throw new TypeError('network: token request failed')
+  }
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: {
+      ...(await authorization()),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!response.ok) {
